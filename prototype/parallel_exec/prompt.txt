@@ -1,0 +1,16 @@
+You may call multiple tools in a single response.
+
+Schema:
+{
+  "thinking": "...",
+  "tool_calls": [
+    { "tool_name": "string", "args": { ... } },
+    { "tool_name": "string", "args": { ... } }
+  ]
+}
+
+Rules:
+- JSON only
+- Multiple tool calls allowed
+- Each call must be independent
+- Do not call the same tool with identical arguments twice

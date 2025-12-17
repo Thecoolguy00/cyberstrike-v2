@@ -1,0 +1,23 @@
+Todo list
+
+DONE
+add reason for terminated in every possible termination ends
+add loop checking for check_process_completed instead of sleep(runtime) 
+add curl and feroxbuster in mcp_server - test passed
+add tavily search
+add args, cmd validator
+add arbritary command action with validation
+
+NOT DONE
+test the DSL for playwright automation
+design a multimodel arch, assign diff tools to diff helper model, test it - design done -not tested
+add ctrl+c capture and terminate the process reason user_terminated
+curl.py: add headers mimicking a real browser for passing through simple bot detection
+
+LATER
+remove wordlists paths add preconfigured dict {"common.txt":"/usr/share/wordlist/dirb/common.txt"}, args only select the key
+add session control for network pentesting
+add ls and cat, also add a path validator, only allow scoped path
+make lists for sql,xss,htmli,lfi,command injection payloads and categorise them into types, first execute only one from each type
+use and remake google_search from cyberstrike v1
+make a RAG dataset using pentest reports, very very useful and increases llm accuracy and capabilities greatly

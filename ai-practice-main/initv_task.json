@@ -1,0 +1,24 @@
+{
+  "tasks": [
+    {
+      "id": "tech_and_innovation_initiatives",
+      "description": "Identify recently announced technology and innovation-related initiatives. Include platform launches, funded R&D programs, AI adoption, co-innovation initiatives, strategic technology collaborations, and corporate venture investments related to technology. Exclude generic capability descriptions. Prioritise press releases and third-party coverage."
+    },
+    {
+      "id": "business_and_strategy_initiatives",
+      "description": "Identify recently announced strategic business initiatives. Include major strategic pivots, restructuring programs, M&A strategy announcements, capital allocation shifts, divestments, and acquisition rationales. Use business news and press releases. Avoid vague strategy statements."
+    },
+    {
+      "id": "partnership_and_sponsorship_initiatives",
+      "description": "Identify recently announced partnership, alliance, sponsorship, or ecosystem initiatives. Include strategic sponsorships (sports, tech events, platforms), joint ventures, co-development agreements, and ecosystem programs. Each initiative must state partners, purpose, and announcement date."
+    },
+    {
+      "id": "investment_and_acquisition_activity",
+      "description": "Identify recently announced investments, minority stakes, acquisitions, or funding activities. Include corporate venture investments, startup acquisitions, majority buyouts, and asset purchases. Each entry must include deal type, target, strategic intent (if stated), and announcement date."
+    },
+    {
+      "id": "market_and_geographic_expansion_initiatives",
+      "description": "Identify recently announced market entry or geographic expansion initiatives. Include new region entry, office or R&D centre openings, delivery expansion, or major market penetration announcements. Each initiative must include location and announcement date."
+    }
+  ]
+}
