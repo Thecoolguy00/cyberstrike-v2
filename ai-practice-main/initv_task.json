@@ -19,6 +19,10 @@
     {
       "id": "market_and_geographic_expansion_initiatives",
       "description": "Identify recently announced market entry or geographic expansion initiatives. Include new region entry, office or R&D centre openings, delivery expansion, or major market penetration announcements. Each initiative must include location and announcement date."
+    },
+    {
+      "id": "philanthropic_and_humanitarian_initiatives",
+      "description": "Identify recently announced philanthropic, funding, or humanitarian initiatives. Include disaster relief funding, humanitarian aid programs, donations, impact funds, education or healthcare funding initiatives, and public commitments with defined beneficiaries or financial amounts. Exclude vague CSR statements or ongoing charitable activities without a specific announcement. Each initiative must include purpose, beneficiary, funding amount or resource commitment (if stated), and announcement date."
     }
   ]
 }

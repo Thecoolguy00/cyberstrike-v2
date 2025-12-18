@@ -35,32 +35,26 @@ groq_llm = ChatGroq(
     temperature=0.5
 )
 
-class NmapState(MessagesState):
+class FeroxState(MessagesState):
     tool_used:Annotated[List[str],operator.add]
 
 tool_list=asyncio.run(get_mcp_tools())
 
 #these are mcp tool that are not executable with our custom pipline so we use our custom mcp node for it
-nmap_tool_names = [
-    "basic_scan",
-    "intense_scan",
-    "recommended_scan",
-    "no_ping_scan",
-    "script_scan"
-]
-nmap_tool_list=[t for t in tool_list if t.name in nmap_tool_names]
+ferox_tool_names = ["execute_feroxbuster"]
+ferox_tool_list=[t for t in tool_list if t.name in ferox_tool_names]
 
-mcp_tool_schema=extract_tool_Schema(nmap_tool_list)
+mcp_tool_schema=extract_tool_Schema(ferox_tool_list)
 normal_tool_schema=tool_schema_from_func([search_tavily])
 
 tool_schema=mcp_tool_schema+normal_tool_schema
 
-agent_prompt="You are a expert nmap agent, answer the users query using available tools"
+agent_prompt="You are a expert ferox agent, answer the users query using available tools"
 
 async def init_graph():
 
     #groq
-    async def agent_node(state: NmapState):
+    async def agent_node(state: FeroxState):
         """
         Agent node using Groq LLM backend
         """
@@ -82,7 +76,7 @@ async def init_graph():
         return await response_route(response)
     
     #gemini
-    async def nmap_agent(state:NmapState):
+    async def ferox_agent(state:FeroxState):
         history=format_history(state["messages"])
         prompt=get_agent_prompt(
             tool_schema=tool_schema,
@@ -94,15 +88,15 @@ async def init_graph():
         return await response_route(response)
 
     #graph
-    flow=StateGraph(NmapState)
+    flow=StateGraph(FeroxState)
 
     flow.add_node("mcp_exec",mcp_exec_node)
-    flow.add_node("nmap_agent",agent_node)
+    flow.add_node("ferox_agent",agent_node)
     flow.add_node("tools",ToolNode([search_tavily]))
 
-    flow.add_edge(START,"nmap_agent")
+    flow.add_edge(START,"ferox_agent")
     flow.add_conditional_edges(
-        "nmap_agent",
+        "ferox_agent",
         tool_router,
         {
             "mcp_exec": "mcp_exec",
@@ -110,8 +104,8 @@ async def init_graph():
             END: END
         }
     )
-    flow.add_edge("tools","nmap_agent")
-    flow.add_edge("mcp_exec","nmap_agent")
+    flow.add_edge("tools","ferox_agent")
+    flow.add_edge("mcp_exec","ferox_agent")
     graph=flow.compile()
 
     return graph
@@ -122,7 +116,7 @@ graph=asyncio.run(init_graph())
 if __name__ == "__main__":
     result = asyncio.run(
         graph.ainvoke({
-            "messages": [HumanMessage(content="scan 127.0.0.1 and then search for 'elden ring' ")],
+            "messages": [HumanMessage(content="run ferox on 127.0.0.1 and then search for 'elden ring' ")],
             "tool_used": []
         })
     )

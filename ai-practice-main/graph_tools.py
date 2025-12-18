@@ -169,3 +169,18 @@ def get_page(url: str) -> Optional[str]:
     page_data = results[0]
     return page_data.get("raw_content")
 
+#extracting text from different message schema
+def extract_text(msg) -> str:
+    if isinstance(msg, str):
+        return msg
+
+    if isinstance(msg, list):
+        out = []
+        for part in msg:
+            if isinstance(part, str):
+                out.append(part)
+            elif isinstance(part, dict) and "text" in part:
+                out.append(part["text"])
+        return "\n".join(out)
+
+    return str(msg)

@@ -7,6 +7,9 @@
 #venv
 langgraph-env/
 
+#duplicate_repo
+
+
 #langgraph related
 .langgraph_api/
 

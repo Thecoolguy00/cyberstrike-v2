@@ -8,6 +8,13 @@ add tavily search
 add args, cmd validator
 add arbritary command action with validation
 
+TASK QUEUE
+Add a pydantic validation for structured llm output
+Add tenacity retry after validation error, refer to ai-practice-main's validator.py and agent_node
+Modularise the sub-agent graphs, llm, common structure, excutes
+Second GROQ_API_KEY for handling rate limits
+Combine everything in test.py
+
 NOT DONE
 test the DSL for playwright automation
 design a multimodel arch, assign diff tools to diff helper model, test it - design done -not tested

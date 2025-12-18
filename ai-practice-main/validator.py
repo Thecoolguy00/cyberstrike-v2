@@ -29,13 +29,11 @@ StructuredOutput = List[Union[Initiative, NoInitiatives]]
 
 import json
 
-def parse_structured_output(raw_msg) -> StructuredOutput:
+def parse_structured_output(text) -> StructuredOutput:
     """
     Manual Pydantic parser for structured LLM output.
     Use ONLY when the response is not a tool call.
     """
-
-    text = extract_text(raw_msg).strip()
 
     try:
         data = json.loads(text)
@@ -57,3 +55,24 @@ def parse_structured_output(raw_msg) -> StructuredOutput:
     return validated
 
 
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
+import json
+from pydantic import ValidationError
+
+@retry(
+    stop=stop_after_attempt(2),
+    wait=wait_fixed(5),
+    retry=retry_if_exception_type((ValueError, json.JSONDecodeError, ValidationError)),
+    reraise=True
+)
+def invoke_and_validate(llm, messages):
+    response = llm.invoke(messages)
+
+    # Tool call → do NOT validate
+    if hasattr(response, "tool_calls") and response.tool_calls:
+        return response
+
+    # Validate strict structured output
+    parse_structured_output(response.content)
+
+    return response

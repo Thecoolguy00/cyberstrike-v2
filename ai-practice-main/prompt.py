@@ -16,14 +16,16 @@ def generate_prompt(task:str, target:str, type:str)->str:
                - Produce a detailed, structured business report
 
                OUTPUT FORMAT
-               Report is a list of json objects
-               A json object for each initiative
+               Report is a list of JSON objects.
+               One JSON object for each initiative.
+               "Date" must be in ISO 8601 format (YYYY-MM-DD) and represents the original publication or announcement date for filtering purposes.
+
                [
                {{
                   "Title": short, one-line descriptive title,
-                  "Date": original publication date of the source,
-                  "Initiative Summary": source URL,
-                  "Source URL": "concise factual summary of the source content"
+                  "Date": "YYYY-MM-DD",
+                  "Initiative Summary": concise factual summary of the source content,
+                  "Source URL": source URL
                }}
                ]
 
@@ -32,7 +34,7 @@ def generate_prompt(task:str, target:str, type:str)->str:
                {{
                   "Title": "No verifiable recent initiatives found."
                }}
-               ]               
+               ]             
                """
 
    elif type=="initv":
@@ -84,14 +86,16 @@ def generate_prompt(task:str, target:str, type:str)->str:
                - If not recent then discard it and move to another news
 
                OUTPUT FORMAT
-               Report is a list of json objects
-               A json object for each initiative
+               Report is a list of JSON objects.
+               One JSON object for each initiative.
+               "Date" must be in ISO 8601 format (YYYY-MM-DD) and represents the original publication or announcement date for filtering purposes.
+
                [
                {{
                   "Title": short, one-line descriptive title,
-                  "Date": original publication date of the source,
-                  "Initiative Summary": source URL,
-                  "Source URL": "concise factual summary of the source content"
+                  "Date": "YYYY-MM-DD",
+                  "Initiative Summary": concise factual summary of the source content,
+                  "Source URL": source URL
                }}
                ]
 
@@ -134,14 +138,16 @@ def generate_prompt(task:str, target:str, type:str)->str:
                   - DO NOT USE more than 3 tool calls for verifying or gathering data about a single "information"
 
                OUTPUT FORMAT
-               Report is a list of json objects
-               A json object for each initiative
+               Report is a list of JSON objects.
+               One JSON object for each initiative.
+               "Date" must be in ISO 8601 format (YYYY-MM-DD) and represents the original publication or announcement date for filtering purposes.
+
                [
                {{
                   "Title": short, one-line descriptive title,
-                  "Date": original publication date of the source,
-                  "Initiative Summary": source URL,
-                  "Source URL": "concise factual summary of the source content"
+                  "Date": "YYYY-MM-DD",
+                  "Initiative Summary": concise factual summary of the source content,
+                  "Source URL": source URL
                }}
                ]
 
@@ -181,19 +187,20 @@ def generate_prompt(task:str, target:str, type:str)->str:
                - Search first; use fetch page only if needed.
                - Maximum of 2 fetch page calls
 
-               OUTPUT FORMAT:
+               OUTPUT FORMAT
                Return a JSON array. One object per qualifying appointment.
+               "Date" must be in ISO 8601 format (YYYY-MM-DD) and represents the original publication or announcement date for filtering purposes.
 
                [
                {{
                   "Title": "One-line title of the appointment",
-                  "Date": "Source publication date",
+                  "Date": "YYYY-MM-DD",
                   "Initiative Summary": "Concise summary of who was appointed to what role and where",
                   "Source URL": "Direct source URL"
                }}
                ]
 
-               If nothing qualifies, return EXACTLY:
+               If nothing qualifies, state exactly:
                [
                {{
                   "Title": "No verifiable recent initiatives found."

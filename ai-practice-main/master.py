@@ -2,27 +2,12 @@
 import json, time
 from pathlib import Path
 from data_graph import graph
-from graph_tools import save_data
+from graph_tools import save_data, extract_text
 from config import TYPE, TARGET, type_list, has_state_file
 
 if TYPE in has_state_file:
     TASK_FILE=f"{TYPE}_task.json"
     STATE_FILE=f"{TYPE}_state_task_{TARGET.replace(' ','_')}.json"
-
-def extract_text(msg) -> str:
-    if isinstance(msg, str):
-        return msg
-
-    if isinstance(msg, list):
-        out = []
-        for part in msg:
-            if isinstance(part, str):
-                out.append(part)
-            elif isinstance(part, dict) and "text" in part:
-                out.append(part["text"])
-        return "\n".join(out)
-
-    return str(msg)
 
 def init_state_tasks():
     if Path(STATE_FILE).exists():

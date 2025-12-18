@@ -29,7 +29,7 @@ def search_tavily(tavily_query:str)->str:
     tavily_docs = client.search(
         query=tavily_query,
         include_answer="advanced",
-        max_results=4
+        max_results=2
     )
     
     #formatting
@@ -51,5 +51,3 @@ def search_tavily(tavily_query:str)->str:
 
 if __name__ == "__main__":
     print(search_tavily("how to ssh into a remote server?"))
-    print("\n\nwikipediasearch:")
-    print(search_wikipedia("how to ssh into a remote server?"))
