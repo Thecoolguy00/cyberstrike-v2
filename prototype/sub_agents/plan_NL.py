@@ -8,15 +8,19 @@ import os, json, operator
 from pydantic import BaseModel
 from typing import TypedDict, List, Annotated
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.graph import StateGraph,START, END, MessagesState
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.output_parsers import PydanticOutputParser
 from util import extract_json_block
 
-load_dotenv()
-api_key_1=os.getenv("GEMINI_API_KEY_1","")
-model=ChatGoogleGenerativeAI(model="gemini-2.0-flash",api_key=api_key_1)
+# Local LLM
+model= ChatOpenAI(
+    model="qwen-local",
+    openai_api_base="http://127.0.0.1:8080/v1",
+    openai_api_key="none",
+)
 
 class Task(BaseModel):
     agent:str

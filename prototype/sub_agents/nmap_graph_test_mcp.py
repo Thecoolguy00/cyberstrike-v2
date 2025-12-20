@@ -19,14 +19,6 @@ from true_mcp_exec import get_mcp_tools
 from search_actions import search_tavily
 load_dotenv()
 
-api_key_2=os.getenv("GEMINI_API_KEY_3","")
-
-model = ChatGoogleGenerativeAI(
-    model="gemini-2.0-flash",
-    api_key=api_key_2,
-    streaming=False,
-    max_retries=0
-)
 groq_key=os.getenv("GROQ_API_KEY","")
 
 groq_llm = ChatGroq(
@@ -81,18 +73,6 @@ async def init_graph():
 
         return await response_route(response)
     
-    #gemini
-    async def nmap_agent(state:NmapState):
-        history=format_history(state["messages"])
-        prompt=get_agent_prompt(
-            tool_schema=tool_schema,
-            history=history,
-            agent_prompt=agent_prompt,
-            state=state)
-        
-        response=model.invoke(prompt)
-        return await response_route(response)
-
     #graph
     flow=StateGraph(NmapState)
 

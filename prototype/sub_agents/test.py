@@ -9,10 +9,10 @@ from langgraph.graph import StateGraph, MessagesState, START
 from langchain_core.messages import SystemMessage, HumanMessage
 
 #---------------Agents and planner-------------------#
-from sub_agents.curl_graph import graph as curl_a
-from sub_agents.nmap_graph import graph as nmap_a
-from sub_agents.ferox_graph import graph as ferox_a
-from sub_agents.plan_NL import graph as planner
+from curl_graph_test_mcp import graph as curl_a
+from nmap_graph_test_mcp import graph as nmap_a
+from ferox_graph_test_mcp import graph as ferox_a
+from plan_NL import graph as planner
 
 
 load_dotenv()
@@ -27,15 +27,15 @@ class State(MessagesState):
 # )
 
 def nmap_agent(task:str)->str:
-    result=nmap_a.invoke({"messages":[HumanMessage(content=task)],"tool_used":[]})
+    result=asyncio.run(nmap_a.ainvoke({"messages":[HumanMessage(content=task)],"tool_used":[]}))
     return result
 
 def curl_agent(task:str)->str:
-    result=curl_a.invoke({"messages":[HumanMessage(content=task)],"tool_used":[]})
+    result=asyncio.run(curl_a.ainvoke({"messages":[HumanMessage(content=task)],"tool_used":[]}))
     return result
 
 def ferox_agent(task:str)->str:
-    result=ferox_a.invoke({"messages":[HumanMessage(content=task)],"tool_used":[]})
+    result=asyncio.run(ferox_a.ainvoke({"messages":[HumanMessage(content=task)],"tool_used":[]}))
     return result
 
 def plan(query:str):
@@ -43,6 +43,8 @@ def plan(query:str):
     return plan
 
 current_plan=plan("active recon on target 127.0.0.1")["plan"]
+
+print(f"Starting Master")
 
 agent_response={}
 for t in current_plan:
@@ -60,3 +62,5 @@ for t in current_plan:
         print(response)
     
     agent_response[agent]=response
+
+print(f"\n\n==================\nAgent Responses\n======================\n{agent_response}")
