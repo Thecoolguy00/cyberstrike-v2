@@ -1,3 +1,4 @@
+#plan_NL.py
 
 #This planner returns a natural langauge tasks for each required sub-agent
 #later add memory for loop use with context for progressing during a task
@@ -9,17 +10,19 @@ from pydantic import BaseModel
 from typing import TypedDict, List, Annotated
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.graph import StateGraph,START, END, MessagesState
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.output_parsers import PydanticOutputParser
 from util import extract_json_block
 
-# Local LLM
-model= ChatOpenAI(
-    model="qwen-local",
-    openai_api_base="http://127.0.0.1:8080/v1",
-    openai_api_key="none",
+groq_key=os.getenv("GROQ_API_KEY","")
+
+groq_llm = ChatGroq(
+    model="openai/gpt-oss-120b",
+    api_key=groq_key,
+    temperature=0.5
 )
 
 class Task(BaseModel):
@@ -27,21 +30,26 @@ class Task(BaseModel):
     task_description:str
 
 class Plan(BaseModel):
-    plan:List[Task]
+    plan:List[Task]=[]
+    final_answer: str = ""
 
 class GraphState(TypedDict):
-    query:str
-    plan:Annotated[List[dict],operator.add]
-    output:str
+    query: str
+    plan: List[dict]
+    agent_response_history: dict
+    final_answer: str
 
 parser=PydanticOutputParser(pydantic_object=Plan)
 
-def planner(state:GraphState):
-    query=state.get("query","")
+def planner(state: GraphState):
+    query = state.get("query", "")
+    prev_plan = state.get("prev_plan", [])
+    prev_results = state.get("agent_response_history", {})
+
     prompt=f"""
             You are a expert cybersecurity planner.
             Your job is to break the user query into high-level natural language tasks and give follow-up tasks
-            follow-up tasks should be given based on previous given tasks and thier result (if previous tasks are present)
+            follow-up tasks should be given based on previous given tasks and thier corresponding agent responses (if previous tasks are present)
             Tasks are for these agents:
             - nmap_a: performs nmap-related tasks (be as less intrusive as possible)
             - ferox_a: performs directory brute-force and web enumeration
@@ -54,21 +62,36 @@ def planner(state:GraphState):
             curl_a: if present, Fetch the /login page
 
             Previous tasks:
-            {state['plan']}
+            {prev_plan}
+
+            Previous tasks agent responses:
+            {prev_results}
 
             Return only JSON with the below schema:
             {parser.get_format_instructions()}
 
-            query:{query}
-    """
+            When the task is completed, return:
+            {{
+                "plan": [],
+                "final_answer": "<your final analytic output>"
+            }}
 
-    response=model.invoke(prompt)
+            query:{query}
+        """
     
+    messages = [
+        ("human", prompt)
+    ]
+
+    # call Groq LLM using tuple message format
+    response = groq_llm.invoke(messages)
     #parsing
     parsed=parser.parse(extract_json_block(response.content))
+
     return {
-        "plan":[t.model_dump() for t in parsed.plan],
-        "output":json.dumps(parsed.model_dump(),indent=2)
+        "agent_response_history": state["agent_response_history"],
+        "plan": [t.model_dump() for t in parsed.plan],
+        "final_answer": parsed.final_answer
     }
 
 flow=StateGraph(GraphState)

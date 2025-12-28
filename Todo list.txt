@@ -7,13 +7,13 @@ add curl and feroxbuster in mcp_server - test passed
 add tavily search
 add args, cmd validator
 add arbritary command action with validation
+Combine everything in test.py
 
 TASK QUEUE
 Add a pydantic validation for structured llm output
 Add tenacity retry after validation error, refer to ai-practice-main's validator.py and agent_node
 Modularise the sub-agent graphs, llm, common structure, excutes
 Second GROQ_API_KEY for handling rate limits
-Combine everything in test.py
 
 NOT DONE
 test the DSL for playwright automation

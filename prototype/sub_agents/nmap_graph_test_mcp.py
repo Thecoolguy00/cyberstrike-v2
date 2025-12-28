@@ -32,7 +32,7 @@ class NmapState(MessagesState):
 
 tool_list=asyncio.run(get_mcp_tools())
 
-#these are mcp tool that are not executable with our custom pipline so we use our custom mcp node for it
+#these are mcp tool that are not executable with our custom langgraph tool pipline so we made a custom mcp node for it
 nmap_tool_names = [
     "basic_scan",
     "intense_scan",
@@ -106,7 +106,9 @@ if __name__ == "__main__":
             "tool_used": []
         })
     )
-    print(result)
+    data=result["messages"][-1].content
+    loaded=json.loads(data)
+    print(loaded["message"])
 
 
 #currently the most stable and working agent
