@@ -9,6 +9,9 @@ add args, cmd validator
 add arbritary command action with validation
 Combine everything in test.py
 
+IN PROGRESS
+Add sqlmap, dalfox and hydra mcp tools
+
 TASK QUEUE
 Add a pydantic validation for structured llm output
 Add tenacity retry after validation error, refer to ai-practice-main's validator.py and agent_node

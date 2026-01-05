@@ -101,7 +101,7 @@ def script_scan(target: str, script: str, ports: list[int]) -> str:
     return script_scan_action(target,script,ports)
 
 #curl for getting headers and page content
-from prototype.mcp_stuff.curl_actions import get_headers_action,get_page_content
+from prototype.mcp_stuff.curl_actions import get_headers_action,get_full_page_action, get_partial_page_action
 
 @mcp.tool()
 def get_header(url:str)->str:
@@ -116,7 +116,7 @@ def get_header(url:str)->str:
     return get_headers_action(url)
 
 @mcp.tool()
-def get_page(url:str)->str:
+def get_full_page(url:str)->str:
     """Return full page content (curl -sL)
 
     Args:
@@ -125,7 +125,55 @@ def get_page(url:str)->str:
     Returns:
         str: The page content of the HTTP response
     """
-    return get_page_content(url)
+    return get_full_page_action(url)
+
+@mcp.tool()
+def get_partial_page(url:str, size_limit:int=2000)->str:
+    """
+    Returns the partial page content upto the sizelimit, defaults to 2000
+
+    Args
+        url(str): the target url eg.,https://www.example.org/
+        size_limit(int): the size limit of the returned page, defaults to 2000 (Optional)
+
+    Returns:
+        str: The partial content of the HTTP response depending upon the size_limit
+    """
+
+    return get_partial_page_action(url=url,size_limit=size_limit)
+
+
+#xss scanners [dalfox, xsstrike]
+from prototype.mcp_stuff.dalfox_actions import dalfox_basic_scan_action
+from prototype.mcp_stuff.xsstrike_actions import xsstrike_basic_scan_action
+
+@mcp.tool()
+def dalfox_basic_scan(target:str)->str:
+    """
+    Performs a basic XSS vulnerability scan on target using dalfox
+
+    Args:
+        target(str): The target url with/without any parameter eg., https://www.example.com or https://www.example.com?q=21
+
+    Returns:
+        str: The output of the scan
+    """
+
+    return dalfox_basic_scan_action(target=target)
+
+@mcp.tool()
+def xsstrike_basic_scan(target:str)->str:
+    """
+    Performs a basic XSS vulnerability scan on target using xsstrike
+
+    Args:
+        target(str): The target url with/without any parameter eg., https://www.example.com or https://www.example.com?q=21
+
+    Returns:
+        str: The output of the scan
+    """
+
+    return xsstrike_basic_scan_action(target=target)
 
 if __name__=="__main__":
     print("mcp server started")
