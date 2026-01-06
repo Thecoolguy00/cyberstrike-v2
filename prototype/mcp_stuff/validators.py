@@ -2,7 +2,6 @@ import re
 import ipaddress
 from typing import List
 
-
 # -----------------------------
 # Regex patterns (simple & readable)
 # -----------------------------
@@ -25,6 +24,7 @@ _META_REGEX = re.compile(r"[;&|`$><(){}\[\]]")
 # -----------------------------
 # Helper functions
 # -----------------------------
+
 def contains_shell_metacharacters(args:List[str])->bool:
     """
     Quickly rejects: if any shell metacharacters apppears in the joined arsg,
@@ -149,6 +149,32 @@ def validate_feroxbuster(args:list[str])->bool:
     
     return False
 
+def validate_dalfox(args:list[str])->bool:
+
+    if not args or str(args[0]).lower() != "dalfox":
+        return False
+    if contains_shell_metacharacters(args):
+        return False
+    
+    for i,a in enumerate(args):
+        if a=="url" and i+1<len(args):
+            if is_valid_url(str(args[i+1])):
+                return True
+    return False
+
+def validate_xsstrike(args:list[str])->bool:
+
+    if not args or str(args[0]).lower() != "xsstrike":
+        return False
+    if contains_shell_metacharacters(args):
+        return False
+    
+    for i,a in enumerate(args):
+        if a in ("-u","--url") and i+1<len(args):
+            if is_valid_url(str(args[i+1])):
+                return True
+            
+    return False
 
 # -----------------------------
 # Dispatcher
@@ -156,7 +182,9 @@ def validate_feroxbuster(args:list[str])->bool:
 VALIDATORS={
     "curl":validate_curl,
     "nmap":validate_nmap,
-    "feroxbuster":validate_feroxbuster
+    "feroxbuster":validate_feroxbuster,
+    "dalfox":validate_dalfox,
+    "xsstrike":validate_xsstrike
 }
 
 def validate_command(args:list[str])->bool:

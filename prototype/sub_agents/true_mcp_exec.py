@@ -61,6 +61,7 @@ if __name__ == "__main__":
     arguments = {"target": "127.0.0.1"}
 
     try:
+        print(asyncio.run(get_mcp_tools()))
         result = asyncio.run(run_mcp_tool(tool, arguments))
         print("Tool output:\n", result)
     except HTTPStatusError as err:
