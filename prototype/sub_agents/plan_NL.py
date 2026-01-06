@@ -54,12 +54,14 @@ def planner(state: GraphState):
             - nmap_a: performs nmap-related tasks (be as less intrusive as possible)
             - ferox_a: performs directory brute-force and web enumeration
             - curl_a: retrieves headers, pages, endpoints
+            - xss_a: checks if the target url is vulnerable to Cross Site Scripting(XSS)
 
             example for plan:
             query: do a active recon on 127.0.0.1 using available tools
             nmap_a: scan 127.0.0.1 and find general open ports and their service version
             ferox_a: run a directory listing on http://127.0.0.1/ and find any exposed files and directories
             curl_a: if present, Fetch the /login page
+            xss_a: check if https://example.com is vulerable to XSS
 
             Previous tasks:
             {prev_plan}

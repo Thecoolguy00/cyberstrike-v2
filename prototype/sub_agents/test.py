@@ -13,8 +13,8 @@ from langchain_core.messages import SystemMessage, HumanMessage, AnyMessage
 from curl_graph_test_mcp import graph as curl_a
 from nmap_graph_test_mcp import graph as nmap_a
 from ferox_graph_test_mcp import graph as ferox_a
+from xss_graph_test_mcp import graph as xss_a
 from plan_NL import graph as planner
-
 
 load_dotenv()
 class State(MessagesState):
@@ -41,6 +41,10 @@ def curl_agent(task:str)->str:
 
 def ferox_agent(task:str)->str:
     result=asyncio.run(ferox_a.ainvoke({"messages":[HumanMessage(content=task)],"tool_used":[]}))
+    return extract(result)
+
+def xss_agent(task:str)->str:
+    result=asyncio.run(xss_a.ainvoke({"messages":[HumanMessage(content=task)],"tool_used":[]}))
     return extract(result)
 
 def plan(query:str,agent_response:dict, prev_plan:list=None):
@@ -76,6 +80,8 @@ while True:
             response = curl_agent(desc)
         elif agent == "ferox_a":
             response = ferox_agent(desc)
+        elif agent == "xss_a":
+            pass
         else:
             response = f"Unknown agent '{agent}'"
 
