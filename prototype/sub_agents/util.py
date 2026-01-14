@@ -133,7 +133,7 @@ async def response_route(a:BaseMessage):
         return {"messages": [a], "tool_used": []}
     
     
-    tool_used=con.get("tool_name","")
+    tool_used=con.get("tool","")
     args = con.get("args", {})
 
     tool_call_id=str(uuid.uuid4())
@@ -244,4 +244,19 @@ def tool_router(state: GraphState):
 
     return "tools"
 
+#extracting text from different message schema
+def extract_text(msg) -> str:
+    if isinstance(msg, str):
+        return msg
+
+    if isinstance(msg, list):
+        out = []
+        for part in msg:
+            if isinstance(part, str):
+                out.append(part)
+            elif isinstance(part, dict) and "text" in part:
+                out.append(part["text"])
+        return "\n".join(out)
+
+    return str(msg)
 

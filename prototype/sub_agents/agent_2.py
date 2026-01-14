@@ -7,7 +7,7 @@ import json, os, re, random
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from util import response_route, tool_schema_from_func, format_history
-from prompt_template import get_agent_prompt
+from p0_template import get_agent_prompt
 load_dotenv()
 api_key_1=os.getenv("GEMINI_API_KEY_1","")
 llm=ChatGoogleGenerativeAI(model="gemini-2.0-flash",api_key=api_key_1)

@@ -29,7 +29,7 @@ async def execute_feroxbuster(url:str,
 
 #nmap for network scan
 from typing import Optional
-from prototype.mcp_stuff.nmap_actions import basic_scan_action,script_scan_action,intense_scan_action,no_ping_scan_action,recommended_scan_action
+from prototype.mcp_stuff.nmap_actions import basic_scan_action,script_scan_action,aggressive_scan_action,noping_version_scan_action
 
 @mcp.tool()
 def basic_scan(target: str) ->str:
@@ -44,8 +44,8 @@ def basic_scan(target: str) ->str:
     return basic_scan_action(target)
 
 @mcp.tool()
-def intense_scan(target: str, ports: Optional[list[int]] = None) -> str:
-    """Perform an intense network scan using nmap.
+def aggressive_scan(target: str, ports: Optional[list[str]] = None) -> str:
+    """Perform an nmap aggressive network scan using -A parameter(includes OS detection, version detection, default script scanning, and traceroute)
 
     Args:
         target (str): The target IP address or hostname to scan.
@@ -55,25 +55,11 @@ def intense_scan(target: str, ports: Optional[list[int]] = None) -> str:
         str: The output results of the intense scan.
     """
     ports = ports or []
-    return intense_scan_action(target,ports)
+    return aggressive_scan_action(target,ports)
 
 @mcp.tool()
-def no_ping_scan(target: str, ports: Optional[list[int]] = None) -> str:
-    """Perform an no-ping scan using nmap.
-
-    Args:
-        target (str): The target IP address or hostname to scan.
-        ports (list): The list of ports to scan (optional)
-
-    Returns:
-        str: The output results of the no ping scan.
-    """
-    ports = ports or []
-    return no_ping_scan_action(target,ports)
-
-@mcp.tool()
-def recommended_scan(target: str, ports: Optional[list[int]] = None) -> str:
-    """Perform an network scan with recommended parameters using nmap.
+def noping_version_scan(target: str, ports: Optional[list[str]] = None) -> str:
+    """Perform an nmap service scan with ping diabled, this is the recommened scan w/wo ports.
 
     Args:
         target (str): The target IP address or hostname to scan.
@@ -83,11 +69,11 @@ def recommended_scan(target: str, ports: Optional[list[int]] = None) -> str:
         str: The output results of the recommended scan.
     """
     ports = ports or []
-    return recommended_scan_action(target,ports)
+    return noping_version_scan_action(target,ports)
 
 @mcp.tool()
-def script_scan(target: str, script: str, ports: list[int]) -> str:
-    """Perform an script scan on specified port and target using nmap
+def script_scan(target: str, script: str, ports: list[str]) -> str:
+    """Perform an nmap script scan on specified port and target
 
     Args:
         target (str): The target IP address or hostname to scan.

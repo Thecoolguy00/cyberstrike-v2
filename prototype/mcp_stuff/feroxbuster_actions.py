@@ -6,7 +6,6 @@ async def run_feroxbuster(
     url: str,
     wordlist: str = "/usr/share/wordlists/dirb/common.txt",
     runtime: int = 120,
-    idle_time:int=15,
     poll_interval:int=2
 ) -> str:
     """
@@ -26,7 +25,7 @@ async def run_feroxbuster(
     print(f"    Output file: {output_file}")
 
     # Wait for it asynchronously
-    res = await wait_for_task(task_id, timeout=runtime,idle_time=idle_time,poll_interval=poll_interval)
+    res = await wait_for_task(task_id, timeout=runtime,poll_interval=poll_interval)
 
     # Handle timeout case
     if res is None:
@@ -50,4 +49,4 @@ async def run_feroxbuster(
 
 # Standalone runner
 if __name__ == "__main__":
-    asyncio.run(run_feroxbuster("http://example.com", runtime=120,idle_time=15,poll_interval=2))
+    asyncio.run(run_feroxbuster("http://example.com", runtime=120,poll_interval=2))

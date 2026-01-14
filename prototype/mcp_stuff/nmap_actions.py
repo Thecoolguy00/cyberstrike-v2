@@ -13,7 +13,7 @@ def basic_scan_action(target: str) -> str:
     cmd = NmapCommand()
     return cmd.execute([cmd.command_name, target])
 
-def intense_scan_action(target: str, ports: Optional[list[int]] = None) -> str:
+def aggressive_scan_action(target: str, ports: Optional[list[str]] = None) -> str:
     """
     Intense scan (-T4 -A)
     Includes: OS detection, version detection, script scanning, and traceroute
@@ -22,15 +22,7 @@ def intense_scan_action(target: str, ports: Optional[list[int]] = None) -> str:
     command = [cmd.command_name] + cmd.port_args(ports) + ["-T4", "-A", target]
     return cmd.execute(command)
 
-def no_ping_scan_action(target: str, ports: Optional[list[int]] = None) -> str:
-    """
-    No-ping scan (-Pn)
-    """
-    cmd = NmapCommand()
-    command = [cmd.command_name] + cmd.port_args(ports) + ["-Pn", target]
-    return cmd.execute(command)
-
-def recommended_scan_action(target: str, ports: Optional[list[int]] = None) -> str:
+def noping_version_scan_action(target: str, ports: Optional[list[str]] = None) -> str:
     """
     Recommended scan: -Pn -sV
     """
@@ -38,12 +30,12 @@ def recommended_scan_action(target: str, ports: Optional[list[int]] = None) -> s
     command = [cmd.command_name] + cmd.port_args(ports) + ["-Pn", "-sV", target]
     return cmd.execute(command)
 
-def script_scan_action(target: str, script: str, ports: list[int]) -> str:    #ports are required for a script scan
+def script_scan_action(target: str, script: str, ports: list[str]) -> str:    #ports are required for a script scan
     """
     Vulnerability/script scan (-sV --script <script>)
     """
     cmd = NmapCommand()
-    command = [cmd.command_name] + cmd.port_args(ports) + ["-sV", "--script", script, target]
+    command = [cmd.command_name] + cmd.port_args(ports) + ["-sV", f"--script={script.strip()}", target]
     return cmd.execute(command)
 
 # if __name__ == "__main__":

@@ -57,8 +57,8 @@ async def get_mcp_tools():
 
 
 if __name__ == "__main__":
-    tool = "basic_scan"
-    arguments = {"target": "127.0.0.1"}
+    tool = "aggressive_scan"
+    arguments = {"target": "10.80.150.0","ports":["21"]}
 
     try:
         print(asyncio.run(get_mcp_tools()))
@@ -68,5 +68,3 @@ if __name__ == "__main__":
         print("HTTP error from server:", err.response.status_code, err.response.text)
     except Exception as exc:
         print("Error:", type(exc).__name__, exc)
-
-    # print(asyncio.run(get_mcp_tools()))

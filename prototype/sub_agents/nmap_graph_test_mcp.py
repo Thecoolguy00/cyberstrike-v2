@@ -14,9 +14,10 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_groq import ChatGroq
 
 from util import extract_tool_Schema, format_history, response_route, tool_schema_from_func, mcp_exec_node, tool_router
-from prompt_template import get_agent_prompt
 from true_mcp_exec import get_mcp_tools
 from search_actions import search_tavily
+from s0 import invoke_and_validate
+from p0 import get_agent_system_message, get_agent_user_message
 load_dotenv()
 
 groq_key=os.getenv("GROQ_API_KEY","")
@@ -24,11 +25,12 @@ groq_key=os.getenv("GROQ_API_KEY","")
 groq_llm = ChatGroq(
     model="moonshotai/kimi-k2-instruct-0905",
     api_key=groq_key,
-    temperature=0.5
+    temperature=0.6
 )
 
 class NmapState(MessagesState):
     tool_used:Annotated[List[str],operator.add]
+    task:str
 
 tool_list=asyncio.run(get_mcp_tools())
 
@@ -57,18 +59,18 @@ async def init_graph():
         Agent node using Groq LLM backend
         """
         history=format_history(state["messages"])
-        prompt=get_agent_prompt(
-            tool_schema=tool_schema,
+        task=state["task"]
+        prompt=get_agent_user_message(
+            task=task,
             history=history,
-            agent_prompt=agent_prompt,
             state=state)
         
         messages = [
-            ("human", prompt)
+            SystemMessage(content=get_agent_system_message(agent_type="nmap",tool_schema=tool_schema)),
+            HumanMessage(content=prompt)
         ]
 
-        # call Groq LLM using tuple message format
-        response = groq_llm.invoke(messages)
+        response=invoke_and_validate(llm=groq_llm, messages=messages)
         messages=messages+[response]
 
         return await response_route(response)

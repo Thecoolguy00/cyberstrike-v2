@@ -7,11 +7,15 @@
 #venv
 langgraph-env/
 
-#duplicate_repo
+#temp files
+test.ipynb
 
 
 #langgraph related
 .langgraph_api/
+
+#logs
+logs/
 
 #data folders
 data/

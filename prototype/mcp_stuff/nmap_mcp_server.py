@@ -17,7 +17,7 @@ def basic_scan(target: str) ->str:
     return basic_scan_action(target)
 
 @mcp.tool()
-def intense_scan(target: str, ports: Optional[list[int]] = None) -> str:
+def intense_scan(target: str, ports: Optional[list[str]] = None) -> str:
     """Perform an intense network scan using nmap.
 
     Args:
@@ -31,7 +31,7 @@ def intense_scan(target: str, ports: Optional[list[int]] = None) -> str:
     return intense_scan_action(target,ports)
 
 @mcp.tool()
-def no_ping_scan(target: str, ports: Optional[list[int]] = None) -> str:
+def no_ping_scan(target: str, ports: Optional[list[str]] = None) -> str:
     """Perform an no-ping scan using nmap.
 
     Args:
@@ -45,7 +45,7 @@ def no_ping_scan(target: str, ports: Optional[list[int]] = None) -> str:
     return no_ping_scan_action(target,ports)
 
 @mcp.tool()
-def recommended_scan(target: str, ports: Optional[list[int]] = None) -> str:
+def recommended_scan(target: str, ports: Optional[list[str]] = None) -> str:
     """Perform an network scan with recommended parameters using nmap.
 
     Args:
@@ -59,7 +59,7 @@ def recommended_scan(target: str, ports: Optional[list[int]] = None) -> str:
     return recommended_scan_action(target,ports)
 
 @mcp.tool()
-def script_scan(target: str, script: str, ports: list[int]) -> str:
+def script_scan(target: str, script: str, ports: list[str]) -> str:
     """Perform an script scan on specified port and target using nmap
 
     Args:

@@ -15,6 +15,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.graph import StateGraph,START, END, MessagesState
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.output_parsers import PydanticOutputParser
+from pydantic import Field
 from util import extract_json_block
 
 groq_key=os.getenv("GROQ_API_KEY","")
@@ -35,7 +36,7 @@ class Plan(BaseModel):
 
 class GraphState(TypedDict):
     query: str
-    plan: List[dict]
+    plan: List[dict]=Field(default_factory=list)
     agent_response_history: dict
     final_answer: str
 
@@ -46,43 +47,52 @@ def planner(state: GraphState):
     prev_plan = state.get("prev_plan", [])
     prev_results = state.get("agent_response_history", {})
 
-    prompt=f"""
-            You are a expert cybersecurity planner.
-            Your job is to break the user query into high-level natural language tasks and give follow-up tasks
-            follow-up tasks should be given based on previous given tasks and thier corresponding agent responses (if previous tasks are present)
-            Tasks are for these agents:
-            - nmap_a: performs nmap-related tasks (be as less intrusive as possible)
-            - ferox_a: performs directory brute-force and web enumeration
-            - curl_a: retrieves headers, pages, endpoints
-            - xss_a: checks if the target url is vulnerable to Cross Site Scripting(XSS)
+    prompt = f"""
+    You are an expert cybersecurity planner operating in an iterative plan–execute–feedback loop.
 
-            example for plan:
-            query: do a active recon on 127.0.0.1 using available tools
-            nmap_a: scan 127.0.0.1 and find general open ports and their service version
-            ferox_a: run a directory listing on http://127.0.0.1/ and find any exposed files and directories
-            curl_a: if present, Fetch the /login page
-            xss_a: check if https://example.com is vulerable to XSS
+    IMPORTANT EXECUTION MODEL (READ CAREFULLY):
+    - You do NOT generate a full multi-step plan at once.
+    - Only ONE logical step (or a small batch of independent steps) will be executed before you are called again.
+    - After each task is executed, its result will be added to the history.
+    - You will then be called again to decide the NEXT step based on REAL results.
+    - NEVER assume the output of a task that has not already been executed.
+    - Conditional logic must be handled across multiple planner calls, NOT within a single plan.
 
-            Previous tasks:
-            {prev_plan}
+    Your job:
+    - Given the user query AND the completed task results so far,
+    - Decide what to do NEXT.
+    - If enough information is already collected, return a final_answer and an empty plan.
 
-            Previous tasks agent responses:
-            {prev_results}
+    Available agents:
+    - nmap_a: perform light, non-intrusive port and service discovery
+    - ferox_a: directory and endpoint enumeration
+    - curl_a: fetch headers, pages, endpoints
+    - xss_a: test for reflected or stored XSS where appropriate
 
-            Return only JSON with the below schema:
-            {parser.get_format_instructions()}
+    Previous executed tasks:
+    {prev_plan}
 
-            When the task is completed, return:
-            {{
-                "plan": [],
-                "final_answer": "<your final analytic output>"
-            }}
+    Results from executed tasks:
+    {prev_results}
 
-            query:{query}
-        """
+    Rules:
+    - for nmap scans, increase the scan power when low scans don't give any results
+    - Only include tasks that can be executed NOW based on known results.
+    - Do NOT include conditional future tasks in the same plan.
+    - If a decision depends on previous output, wait for that output in a future planner call.
+    - Plans must be ordered.
+    - If no more tasks are needed, return an empty plan and provide final_answer.
+
+    Return ONLY valid JSON in the following schema:
+    {parser.get_format_instructions()}
+
+    User query:
+    {query}
+    """
+
     
     messages = [
-        ("human", prompt)
+        HumanMessage(content=prompt)
     ]
 
     # call Groq LLM using tuple message format

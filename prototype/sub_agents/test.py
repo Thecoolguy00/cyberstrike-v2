@@ -32,26 +32,26 @@ def extract(a:dict)->str:
     return loaded["message"]
 
 def nmap_agent(task:str)->str:
-    result=asyncio.run(nmap_a.ainvoke({"messages":[HumanMessage(content=task)],"tool_used":[]}))
+    result=asyncio.run(nmap_a.ainvoke({"task":task,"messages":[],"tool_used":[]}))
     return extract(result)
 
 def curl_agent(task:str)->str:
-    result=asyncio.run(curl_a.ainvoke({"messages":[HumanMessage(content=task)],"tool_used":[]}))
+    result=asyncio.run(curl_a.ainvoke({"task":task,"messages":[],"tool_used":[]}))
     return extract(result)
 
 def ferox_agent(task:str)->str:
-    result=asyncio.run(ferox_a.ainvoke({"messages":[HumanMessage(content=task)],"tool_used":[]}))
+    result=asyncio.run(ferox_a.ainvoke({"task":task,"messages":[],"tool_used":[]}))
     return extract(result)
 
 def xss_agent(task:str)->str:
-    result=asyncio.run(xss_a.ainvoke({"messages":[HumanMessage(content=task)],"tool_used":[]}))
+    result=asyncio.run(xss_a.ainvoke({"task":task,"messages":[],"tool_used":[]}))
     return extract(result)
 
 def plan(query:str,agent_response:dict, prev_plan:list=None):
     plan=planner.invoke({"query":query,"agent_response_history":agent_response, "prev_plan":prev_plan})
     return plan
 
-query = "active recon on target 127.0.0.1"
+query = "try to find as much info on target 10.80.171.108"
 
 # First plan
 planner_out = plan(query, agent_response={})
