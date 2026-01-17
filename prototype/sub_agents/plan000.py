@@ -134,7 +134,7 @@ def planner(state: GraphState)->GraphState:
     #build messages
     messages=[
         SystemMessage(content=get_planner_system_prompt()),
-        HumanMessage(content=get_planner_system_prompt(query, execution_history))
+        HumanMessage(content=get_planner_user_prompt(query, execution_history))
     ]
 
     #invoke llm

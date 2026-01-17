@@ -5,30 +5,6 @@ from pathlib import Path
 
 mcp=FastMCP(name="combined_tools",host="0.0.0.0",port=4545)
 
-#feroxbuster for directory brute forcing
-# @mcp.tool()
-# async def execute_feroxbuster(url:str,
-#                         wordlist: str="/usr/share/wordlists/dirb/common.txt",
-#                         runtime:int=120,
-#                         idle_time:int=15,
-#                         poll_interval:int=2
-#                         )->str:
-#     """
-#     Launch feroxbuster in background, wait 'runtime' seconds,
-#     then fetch and return results.
-
-#     Args:
-#         url(str): The url of the webapp.
-#         wordlist(str): path to the wordlist,defaults to /usr/share/wordlists/dirb/common.txt (optional)
-#         runtime(int): the max runtime in seconds to be allowed,defaults to 120s (optional)
-#         idle_time(int): the max time for the output file to be idle before termination,defaults to 15s (optional)
-#         poll_interval(int):the interval for output polling for status checking, detaults to 2s (optional)
-
-#     Returns:
-#         str: The output of feroxbuster after termination
-#     """   
-#     return await run_feroxbuster(url,wordlist,runtime,idle_time,poll_interval)
-
 #nmap for network scan
 from typing import Optional
 from prototype.mcp_stuff.nmap_actions import basic_scan_action,script_scan_action,aggressive_scan_action,noping_version_scan_action
@@ -178,7 +154,7 @@ from prototype.mcp_stuff.background_tasks import launch_background_task, get_bac
 @mcp.tool()
 def start_nmap_long_scan(
     target: str,
-    ports: List[str],
+    ports: List[str]=["1-9000"],
     max_runtime: int = 900
 ) -> Dict:
     """
@@ -186,7 +162,8 @@ def start_nmap_long_scan(
 
     Args:
         target (str): The target IP address or hostname to scan.
-        ports (list): The list of ports to scan (optional)
+        ports (list): The list of ports to scan (optional), defaults to "1-9000"
+
     """
     task_id, output_file = launch_background_task(
         cmd="nmap",
@@ -202,6 +179,7 @@ def start_nmap_long_scan(
     }
 
 
+#TODO: add option for wordlists, names instead of path, point the wordlists name to its path using a dict
 @mcp.tool()
 def start_feroxbuster(
     target: str,
@@ -210,6 +188,9 @@ def start_feroxbuster(
     """
     Start a long-running nmap scan in background.
     Returns task_id immediately.
+
+    Args:
+        target (str): The url of the webapp
     """
     wordlist = "/usr/share/wordlists/dirb/common.txt"
 
@@ -250,6 +231,8 @@ def get_task(task_id: str) -> Dict:
         return {"error": "task not found"}
     return task
 
+
+#due to the temporary fix, this function now also kills the expired tasks and marks them completed
 @mcp.tool()
 def get_all_bg_task_status() -> Dict:
     """

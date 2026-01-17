@@ -195,7 +195,7 @@ def run_master_loop(query: str, max_iterations: int = 20, verbose: bool = True):
 
 def main():
     """Run the master orchestrator."""
-    query = "Try to find as much info on target 10.81.172.134"
+    query = "Try to find as much info on target 10.82.162.223"
     
     final_answer = run_master_loop(
         query=query,

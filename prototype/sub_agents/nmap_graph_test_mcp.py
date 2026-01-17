@@ -39,7 +39,9 @@ nmap_tool_names = [
     "basic_scan",
     "aggressive_scan",
     "noping_version_scan",
-    "script_scan"
+    "script_scan",
+    "start_nmap_long_scan",
+    "get_task_output_mcp"
 ]
 nmap_tool_list=[t for t in tool_list if t.name in nmap_tool_names]
 

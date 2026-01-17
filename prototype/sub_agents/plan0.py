@@ -5,6 +5,7 @@ Uses plan-execute-feedback loop for adaptive task generation.
 """
 
 import os
+import asyncio
 from typing import List, TypedDict, Dict
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
@@ -13,7 +14,10 @@ from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.output_parsers import PydanticOutputParser
 from util import extract_json_block
+import dc_logger
+from true_mcp_exec import run_mcp_tool
 
+logger = dc_logger.LoggerAdap(dc_logger.get_logger(__name__))
 load_dotenv()
 
 # LLM setup
@@ -88,6 +92,16 @@ OUTPUT FORMAT:
 def get_planner_user_prompt(query: str, execution_history: List[Dict[str, str]]) -> str:
     """User prompt with current state and query."""
     
+    # Get background tasks status
+    try:
+        status_result = asyncio.run(run_mcp_tool("get_all_bg_task_status", {}))
+        if status_str["total"] == 0:
+            status_str="no background tasks have been dispatched yet"
+        else:
+            status_str = f"{status_result}"
+    except Exception as e:
+        status_str = f"Error fetching - {str(e)}"
+    
     # Format execution history with clear task-result mapping
     if not execution_history:
         history_str = "None yet - this is the first planning cycle"
@@ -112,8 +126,12 @@ def get_planner_user_prompt(query: str, execution_history: List[Dict[str, str]])
 EXECUTION HISTORY (Task → Result):
 {history_str}
 
-Based on the execution history above, what should happen NEXT?
+MCP BACKGROUND TASKS STATUS
+{status_str}
+
+Based on the execution history and background task status above, what should happen NEXT?
 - If more info needed: Return next task(s) in "plan"
+- If the plan includes a background task then mention the corresponding task's id in the plan
 - If objective complete: Return empty "plan" + summary in "final_answer"
 
 IMPORTANT: Each task above shows its result. Don't repeat tasks that already succeeded.
@@ -155,8 +173,8 @@ def planner(state: GraphState) -> GraphState:
         
     except Exception as e:
         # Fallback on error
-        print(f"[ERROR] Planner failed: {e}")
-        print(f"Raw response: {response.content if 'response' in locals() else 'N/A'}")
+        logger.error(f"[ERROR] Planner failed: {e}")
+        logger.info(f"Raw response: {response.content if 'response' in locals() else 'N/A'}")
         
         return {
             "query": query,

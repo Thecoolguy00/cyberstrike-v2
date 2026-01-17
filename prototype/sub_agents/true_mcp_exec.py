@@ -7,7 +7,7 @@ import os
 
 load_dotenv()
 
-async def run_mcp_tool(tool_name: str, args: dict):
+async def run_mcp_tool(tool_name: str, args: dict=None):
     """
     Connect to an MCP server over Streamable HTTP, list tools, call one, return result string.
     """
@@ -92,6 +92,10 @@ if __name__ == "__main__":
         status_args = {"task_id": task_id}
         status = asyncio.run(run_mcp_tool(status_tool, status_args))
         print("Task status:", status)
+
+        #get all tasks
+        output=asyncio.run(run_mcp_tool(tool_name="get_all_bg_task_status"))
+        print(f"All tasks status: {output}")
 
     except json.JSONDecodeError:
         print("Failed to parse start result as JSON")

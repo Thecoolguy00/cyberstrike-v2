@@ -327,6 +327,10 @@ class BackgroundTaskManager:
 
     def get_status(self) -> Dict:
         """Returns overview of pending+completed tasks."""
+
+        #temperary fix, to mark tasks which have completed execution, but runtime_still exists
+        temp=check_for_completed_tasks()
+
         with self._lock:
             pending = [t for t in self.tasks if not t.get("completed")]
             done = [t for t in self.tasks if t.get("completed")]

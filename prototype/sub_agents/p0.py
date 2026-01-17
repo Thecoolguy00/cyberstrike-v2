@@ -33,7 +33,12 @@ Port format:
 - for single port: ["21"]
 - for multiple port: ["22","232"]
 - for port range ["1-1000"]
-- no.of ports scanned should not be greater than 5000 in one scan
+- no.of ports scanned should not be greater than 5000 in non-background scan
+
+Background scan:
+- use background scan when the nmap scan will take time, for example full/large port scan
+- use start_nmap_long_scan to run a nmap background scan
+- use get_task_output_mcp to get is output later using the task id
 
 Don't guess. Don't repeat scans. Escalate only when needed.
 """,
@@ -59,6 +64,10 @@ STRATEGY:
 - Only scan confirmed web services
 - Use default wordlists
 - One scan per target
+
+NOTE:
+- start_feroxbuster is a background task
+- use get_task_output_mcp to get is output later using the task id
 
 Don't repeat scans. Don't guess purposes.
 """,

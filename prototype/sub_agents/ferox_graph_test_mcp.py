@@ -35,7 +35,10 @@ class FeroxState(MessagesState):
 tool_list=asyncio.run(get_mcp_tools())
 
 #these are mcp tool that are not executable with our custom pipline so we use our custom mcp node for it
-ferox_tool_names = ["execute_feroxbuster"]
+ferox_tool_names = [
+    "start_feroxbuster",
+    "get_task_output_mcp"
+    ]
 ferox_tool_list=[t for t in tool_list if t.name in ferox_tool_names]
 
 mcp_tool_schema=extract_tool_Schema(ferox_tool_list)
