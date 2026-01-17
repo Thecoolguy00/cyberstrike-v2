@@ -57,13 +57,44 @@ async def get_mcp_tools():
 
 
 if __name__ == "__main__":
-    tool = "aggressive_scan"
-    arguments = {"target": "10.80.150.0","ports":["21"]}
+    import json
+    import time
+
+    # Example: Start a long-running nmap scan
+    tool = "start_nmap_long_scan"
+    arguments = {"target": "127.0.0.1", "ports": ["80", "443"]}
 
     try:
-        print(asyncio.run(get_mcp_tools()))
+        # Start the task
         result = asyncio.run(run_mcp_tool(tool, arguments))
-        print("Tool output:\n", result)
+        print("Start result:", result)
+
+        # Parse the JSON response to get task_id
+        start_result = json.loads(result)
+        task_id = start_result.get("task_id")
+        if not task_id:
+            print("Failed to get task_id")
+
+        print(f"Task started with ID: {task_id}")
+
+        # Wait a bit for the task to run (adjust time as needed)
+        print("Waiting 10 seconds for task to complete...")
+        time.sleep(10)
+
+        # Get the task output
+        output_tool = "get_task_output_mcp"
+        output_args = {"task_id": task_id}
+        output = asyncio.run(run_mcp_tool(output_tool, output_args))
+        print("Task output:\n", output)
+
+        # Alternatively, check task status
+        status_tool = "get_task"
+        status_args = {"task_id": task_id}
+        status = asyncio.run(run_mcp_tool(status_tool, status_args))
+        print("Task status:", status)
+
+    except json.JSONDecodeError:
+        print("Failed to parse start result as JSON")
     except HTTPStatusError as err:
         print("HTTP error from server:", err.response.status_code, err.response.text)
     except Exception as exc:

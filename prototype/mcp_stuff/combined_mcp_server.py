@@ -1,35 +1,45 @@
 from mcp.server.fastmcp import FastMCP
 from prototype.mcp_stuff.feroxbuster_actions import run_feroxbuster
+from typing import Dict, List, Sequence, Union
+from pathlib import Path
 
 mcp=FastMCP(name="combined_tools",host="0.0.0.0",port=4545)
 
 #feroxbuster for directory brute forcing
-@mcp.tool()
-async def execute_feroxbuster(url:str,
-                        wordlist: str="/usr/share/wordlists/dirb/common.txt",
-                        runtime:int=120,
-                        idle_time:int=15,
-                        poll_interval:int=2
-                        )->str:
-    """
-    Launch feroxbuster in background, wait 'runtime' seconds,
-    then fetch and return results.
+# @mcp.tool()
+# async def execute_feroxbuster(url:str,
+#                         wordlist: str="/usr/share/wordlists/dirb/common.txt",
+#                         runtime:int=120,
+#                         idle_time:int=15,
+#                         poll_interval:int=2
+#                         )->str:
+#     """
+#     Launch feroxbuster in background, wait 'runtime' seconds,
+#     then fetch and return results.
 
-    Args:
-        url(str): The url of the webapp.
-        wordlist(str): path to the wordlist,defaults to /usr/share/wordlists/dirb/common.txt (optional)
-        runtime(int): the max runtime in seconds to be allowed,defaults to 120s (optional)
-        idle_time(int): the max time for the output file to be idle before termination,defaults to 15s (optional)
-        poll_interval(int):the interval for output polling for status checking, detaults to 2s (optional)
+#     Args:
+#         url(str): The url of the webapp.
+#         wordlist(str): path to the wordlist,defaults to /usr/share/wordlists/dirb/common.txt (optional)
+#         runtime(int): the max runtime in seconds to be allowed,defaults to 120s (optional)
+#         idle_time(int): the max time for the output file to be idle before termination,defaults to 15s (optional)
+#         poll_interval(int):the interval for output polling for status checking, detaults to 2s (optional)
 
-    Returns:
-        str: The output of feroxbuster after termination
-    """   
-    return await run_feroxbuster(url,wordlist,runtime,idle_time,poll_interval)
+#     Returns:
+#         str: The output of feroxbuster after termination
+#     """   
+#     return await run_feroxbuster(url,wordlist,runtime,idle_time,poll_interval)
 
 #nmap for network scan
 from typing import Optional
 from prototype.mcp_stuff.nmap_actions import basic_scan_action,script_scan_action,aggressive_scan_action,noping_version_scan_action
+
+#helper fucntion for normalising ports
+
+def port_args(ports: Optional[Sequence[Union[int, str]]]) -> List[str]:
+    """Return ['-p', '22,80'] if ports present, else []"""
+    if not ports:
+        return []
+    return ["-p", ",".join(map(str, ports))]
 
 @mcp.tool()
 def basic_scan(target: str) ->str:
@@ -161,6 +171,97 @@ def xsstrike_basic_scan(target:str)->str:
 
     return xsstrike_basic_scan_action(target=target)
 
+
+#long running tasks specific function
+from prototype.mcp_stuff.background_tasks import launch_background_task, get_background_task_status, get_task_by_id, get_task_output
+
+@mcp.tool()
+def start_nmap_long_scan(
+    target: str,
+    ports: List[str],
+    max_runtime: int = 900
+) -> Dict:
+    """
+    Start a long-running nmap scan in background.
+
+    Args:
+        target (str): The target IP address or hostname to scan.
+        ports (list): The list of ports to scan (optional)
+    """
+    task_id, output_file = launch_background_task(
+        cmd="nmap",
+        args=port_args(ports=ports) + [target],
+        max_runtime=max_runtime
+    )
+
+    return {
+        "task_id": task_id,
+        "status": "started",
+        "output_file": str(output_file),
+        "max_runtime": max_runtime
+    }
+
+
+@mcp.tool()
+def start_feroxbuster(
+    target: str,
+    max_runtime: int = 900
+) -> Dict:
+    """
+    Start a long-running nmap scan in background.
+    Returns task_id immediately.
+    """
+    wordlist = "/usr/share/wordlists/dirb/common.txt"
+
+    if not Path(wordlist).exists():
+        return {
+            "error": "wordlist not found",
+            "status": "failed"
+        }
+    
+    # Basic feroxbuster args
+    args = ["-u", target, "-w", wordlist]
+
+    task_id, output_file = launch_background_task(cmd="feroxbuster", args=args, max_runtime=max_runtime)
+
+    return {
+        "task_id": task_id,
+        "status": "started",
+        "output_file": str(output_file),
+        "max_runtime": max_runtime
+    }
+
+@mcp.tool()
+def get_task_output_mcp(task_id: str) -> str:
+    """
+    Get output of a background task by ID.
+    Returns empty string if not available yet.
+    """
+    output = get_task_output(task_id)
+    return output or ""
+
+@mcp.tool()
+def get_task(task_id: str) -> Dict:
+    """
+    Get metadata for a specific background task by ID.
+    """
+    task = get_task_by_id(task_id)
+    if not task:
+        return {"error": "task not found"}
+    return task
+
+@mcp.tool()
+def get_all_bg_task_status() -> Dict:
+    """
+    Returns overview of pending+completed backgroud tasks
+    """
+
+    return get_background_task_status()
+
+
 if __name__=="__main__":
     print("mcp server started")
-    mcp.run(transport="streamable-http") 
+    try:
+        mcp.run(transport="streamable-http")
+    except KeyboardInterrupt:
+        print("Shutting down MCP server...") 

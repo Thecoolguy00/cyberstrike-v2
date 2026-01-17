@@ -33,6 +33,7 @@ Port format:
 - for single port: ["21"]
 - for multiple port: ["22","232"]
 - for port range ["1-1000"]
+- no.of ports scanned should not be greater than 5000 in one scan
 
 Don't guess. Don't repeat scans. Escalate only when needed.
 """,

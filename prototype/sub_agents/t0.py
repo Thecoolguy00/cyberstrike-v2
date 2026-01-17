@@ -91,8 +91,8 @@ def execute_plan(plan: List[dict], verbose: bool = True) -> List[Dict[str, str]]
         
         if verbose:
             # Log a single condensed line with agent and task preview to avoid redundant lines
-            task_preview = desc if len(desc) <= 120 else desc[:117] + "..."
-            logger.info(f"\n[{i}/{len(plan)}] Executing {agent}: {task_preview}")
+            task_preview = desc if len(desc) <= 300 else desc[:300] + "..."
+            logger.info(f"[{i}/{len(plan)}] Executing {agent}: {task_preview}")
         
         response = execute_agent(agent, desc)
         
@@ -104,7 +104,7 @@ def execute_plan(plan: List[dict], verbose: bool = True) -> List[Dict[str, str]]
         })
         
         if verbose:
-            preview = response[:150] + "..." if len(response) > 150 else response
+            preview = response[:300] + "..." if len(response) > 300 else response
             logger.info(f"Result preview: {preview}")
     
     return executions
@@ -162,7 +162,7 @@ def run_master_loop(query: str, max_iterations: int = 20, verbose: bool = True):
         # Check if done
         if plan_result["is_complete"]:
             if verbose:
-                logger.info(f"\nFinal Answer:\n{plan_result['final_answer']}")
+                logger.info(f"Final Answer: {plan_result['final_answer']}")
             return plan_result["final_answer"]
         
         current_plan = plan_result["plan"]
@@ -172,8 +172,7 @@ def run_master_loop(query: str, max_iterations: int = 20, verbose: bool = True):
             break
         
         if verbose:
-            logger.info(f"\n--- Iteration {iteration} ---")
-            logger.info(f"Tasks to execute: {len(current_plan)}")
+            logger.info(f"Iteration {iteration}, Tasks to execute: {len(current_plan)}")
         
         # Execute current plan
         new_executions = execute_plan(current_plan, verbose=verbose)
@@ -188,7 +187,7 @@ def run_master_loop(query: str, max_iterations: int = 20, verbose: bool = True):
         )
     
     # Max iterations reached
-    logger.info(f"\nWarning: Reached max iterations ({max_iterations})")
+    logger.info(f"Warning: Reached max iterations ({max_iterations})")
     return plan_result.get("final_answer", "Incomplete - max iterations reached")
 
 
@@ -196,15 +195,15 @@ def run_master_loop(query: str, max_iterations: int = 20, verbose: bool = True):
 
 def main():
     """Run the master orchestrator."""
-    query = "Try to find as much info on target 10.80.150.0"
+    query = "Try to find as much info on target 10.81.172.134"
     
     final_answer = run_master_loop(
         query=query,
-        max_iterations=10,
+        max_iterations=20,
         verbose=True
     )
     
-    logger.info("EXECUTION COMPLETE")
+    logger.info(f"Execution complete, final answer: \n {final_answer}")
 
 
 if __name__ == "__main__":

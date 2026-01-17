@@ -9,6 +9,7 @@ async def run_feroxbuster(
     poll_interval:int=2
 ) -> str:
     """
+    This is a deprecated version
     Launch feroxbuster in background, wait 'runtime' seconds,
     then fetch and return results.
     """

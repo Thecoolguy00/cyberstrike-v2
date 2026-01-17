@@ -18,7 +18,7 @@ load_dotenv()
 
 # LLM setup
 groq_llm = ChatGroq(
-    model="openai/gpt-oss-120b",
+    model="llama-3.3-70b-versatile",
     api_key=os.getenv("GROQ_API_KEY", ""),
     temperature=0.3
 )
@@ -74,6 +74,7 @@ AVAILABLE AGENTS:
 - xss_a - XSS testing (only on confirmed input points)
 
 PLANNING RULES:
+0. Start with less intrusive then increase if not finding anything
 1. Only plan tasks executable NOW with current knowledge
 2. Never assume outputs of unexecuted tasks
 3. Order tasks logically (dependencies first)

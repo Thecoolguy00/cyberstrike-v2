@@ -37,9 +37,8 @@ tool_list=asyncio.run(get_mcp_tools())
 #these are mcp tool that are not executable with our custom langgraph tool pipline so we made a custom mcp node for it
 nmap_tool_names = [
     "basic_scan",
-    "intense_scan",
-    "recommended_scan",
-    "no_ping_scan",
+    "aggressive_scan",
+    "noping_version_scan",
     "script_scan"
 ]
 nmap_tool_list=[t for t in tool_list if t.name in nmap_tool_names]

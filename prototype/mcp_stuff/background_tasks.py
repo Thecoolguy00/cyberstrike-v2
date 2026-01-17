@@ -372,7 +372,7 @@ class BackgroundTaskManager:
 bg_manager = BackgroundTaskManager()
 
 
-def launch_background_task(cmd: str, args: List[str], max_runtime: int = 300):
+def launch_background_task(cmd: str, args: List[str], max_runtime: int = 500):
     return bg_manager.run_background_task(cmd, args, max_runtime)
 
 
@@ -399,7 +399,7 @@ async def wait_for_task(task_id: str, timeout: int, poll_interval: float = 2.0):
 
 
 """
-Helper functions for running security tools in background with minimal boilerplate
+Helper functions for running security tools in background with minimal boilerplate, this is a waiting fuction do we will not be using it
 """
 
 from prototype.mcp_stuff.background_tasks import launch_background_task, wait_for_task
