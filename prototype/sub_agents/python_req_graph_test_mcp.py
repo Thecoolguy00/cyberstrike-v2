@@ -16,31 +16,35 @@ from prototype.sub_agents.schema import BaseState
 
 from app.utilities.llm_helper import LLMHelper
 
-groq_llm = LLMHelper.get_llm_for_service("curl_a")
+groq_llm = LLMHelper.get_llm_for_service("python_req_a")
 
-class CurlState(BaseState):
+class NmapState(BaseState):
     pass
 
 tool_list=asyncio.run(get_mcp_tools())
 
-#these are mcp tool that are not executable with our custom pipline so we use our custom mcp node for it
-curl_tool_names = [
-    "get_header",
-    "get_page"
+#these are mcp tool that are not executable with our custom langgraph tool pipline so we made a custom mcp node for it
+nmap_tool_names = [
+    "basic_scan",
+    "aggressive_scan",
+    "noping_version_scan",
+    "script_scan",
+    "start_nmap_long_scan",
+    "get_task_output_mcp"
 ]
-curl_tool_list=[t for t in tool_list if t.name in curl_tool_names]
+nmap_tool_list=[t for t in tool_list if t.name in nmap_tool_names]
 
-mcp_tool_schema=extract_tool_Schema(curl_tool_list)
+mcp_tool_schema=extract_tool_Schema(nmap_tool_list)
 normal_tool_schema=tool_schema_from_func([search_tavily])
 
 tool_schema=mcp_tool_schema+normal_tool_schema
 
-agent_prompt="You are a expert curl agent, answer the users query using available tools"
+agent_prompt="You are a expert nmap agent, answer the users query using available tools"
 
 async def init_graph():
 
     #groq
-    async def agent_node(state: CurlState):
+    async def agent_node(state: NmapState):
         """
         Agent node using Groq LLM backend
         """
@@ -52,7 +56,7 @@ async def init_graph():
             state=state)
         
         messages = [
-            SystemMessage(content=get_agent_system_message(agent_type="curl",tool_schema=tool_schema)),
+            SystemMessage(content=get_agent_system_message(agent_type="nmap",tool_schema=tool_schema)),
             HumanMessage(content=prompt)
         ]
 
@@ -60,17 +64,17 @@ async def init_graph():
         messages=messages+[response]
 
         return await response_route(response)
-
+    
     #graph
-    flow=StateGraph(CurlState)
+    flow=StateGraph(NmapState)
 
     flow.add_node("mcp_exec",mcp_exec_node)
-    flow.add_node("curl_agent",agent_node)
+    flow.add_node("nmap_agent",agent_node)
     flow.add_node("tools",ToolNode([search_tavily]))
 
-    flow.add_edge(START,"curl_agent")
+    flow.add_edge(START,"nmap_agent")
     flow.add_conditional_edges(
-        "curl_agent",
+        "nmap_agent",
         tool_router,
         {
             "mcp_exec": "mcp_exec",
@@ -78,8 +82,8 @@ async def init_graph():
             END: END
         }
     )
-    flow.add_edge("tools","curl_agent")
-    flow.add_edge("mcp_exec","curl_agent")
+    flow.add_edge("tools","nmap_agent")
+    flow.add_edge("mcp_exec","nmap_agent")
     graph=flow.compile()
 
     return graph
@@ -90,11 +94,13 @@ graph=asyncio.run(init_graph())
 if __name__ == "__main__":
     result = asyncio.run(
         graph.ainvoke({
-            "messages": [HumanMessage(content="get page www.wikipedia.org and then search for 'elden ring' ")],
+            "messages": [HumanMessage(content="scan 127.0.0.1 and then search for 'elden ring' ")],
             "tool_used": []
         })
     )
-    print(result)
+    data=result["messages"][-1].content
+    loaded=json.loads(data)
+    print(loaded["message"])
 
 
 #currently the most stable and working agent

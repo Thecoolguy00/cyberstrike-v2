@@ -4,8 +4,13 @@ llm_models:
   default_model: llama-3.3-70b-versatile"
   
   # agent-specific models (optional overrides)
-  python_exec: "llama-3.3-70b-versatile"
+  python_req_a: "llama-3.3-70b-versatile"
+  nmap_a: "llama-3.3-70b-versatile"
+  curl_a: "llama-3.3-70b-versatile"
+  xss_a: "llama-3.3-70b-versatile"
+  ferox_a: "llama-3.3-70b-versatile"
 
+#available agents
 #moonshot_kimi_k2_instruct_0905
 #gpt-oss-120b
 #gemini_2_5_flash

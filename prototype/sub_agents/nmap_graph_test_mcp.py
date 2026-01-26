@@ -1,38 +1,29 @@
 import asyncio
-from dotenv import load_dotenv
-import os
 import json
 import operator
-from pydantic import BaseModel
 from typing import TypedDict, List, Optional, Annotated
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.graph import StateGraph,START, END, MessagesState
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_groq import ChatGroq
 
 from prototype.sub_agents.helper import extract_tool_Schema, format_history, response_route, tool_schema_from_func, mcp_exec_node, tool_router
 from prototype.sub_agents.true_mcp_exec import get_mcp_tools
 from prototype.sub_agents.search_actions import search_tavily
 from prototype.sub_agents.s0 import invoke_and_validate
 from prototype.sub_agents.p0 import get_agent_system_message, get_agent_user_message
-load_dotenv()
+from prototype.sub_agents.schema import BaseState
 
-groq_key=os.getenv("GROQ_API_KEY","")
+from app.utilities.llm_helper import LLMHelper
 
-groq_llm = ChatGroq(
-    model="moonshotai/kimi-k2-instruct-0905",
-    api_key=groq_key,
-    temperature=0.6
-)
+groq_llm = LLMHelper.get_llm_for_service("nmap_a")
 
-class NmapState(MessagesState):
-    tool_used:Annotated[List[str],operator.add]
-    task:str
+class NmapState(BaseState):
+    pass
 
 tool_list=asyncio.run(get_mcp_tools())
+
+#too much abstraction makes you forget primitives
 
 #these are mcp tool that are not executable with our custom langgraph tool pipline so we made a custom mcp node for it
 nmap_tool_names = [
@@ -76,7 +67,7 @@ async def init_graph():
 
         return await response_route(response)
     
-    #graph
+    #graph, maybe modularise this
     flow=StateGraph(NmapState)
 
     flow.add_node("mcp_exec",mcp_exec_node)
