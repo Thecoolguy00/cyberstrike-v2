@@ -10,7 +10,7 @@ CmdArg = Union[StrSeq, str]
 class CommandRunner:
     """Base class for executing kali commands"""
 
-    def __init__(self, command_name: str, timeout: int = 200):
+    def __init__(self, command_name: str, timeout: int = 120):
         self.command_name = command_name
         self.timeout = timeout
 

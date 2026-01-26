@@ -4,7 +4,7 @@ from langchain_core.messages import AIMessage, AnyMessage
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type, before_sleep
 from langchain_core.output_parsers import PydanticOutputParser
 import json
-import dc_logger
+from app.utilities import dc_logger
 
 logger = dc_logger.LoggerAdap(dc_logger.get_logger(__name__))
 

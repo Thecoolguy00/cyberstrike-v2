@@ -1,0 +1,17 @@
+
+llm_models:
+  # Default model for all services
+  default_model: llama-3.3-70b-versatile"
+  
+  # agent-specific models (optional overrides)
+  python_exec: "llama-3.3-70b-versatile"
+
+#moonshot_kimi_k2_instruct_0905
+#gpt-oss-120b
+#gemini_2_5_flash
+#llama-3.3-70b-versatile
+
+mongodb_config:
+  db_name: "Cyberstrike_p0_DB"
+  max_pool: 10
+  server_selection_timeout: 5000

@@ -13,9 +13,9 @@ from langchain_groq import ChatGroq
 from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.output_parsers import PydanticOutputParser
-from util import extract_json_block
-import dc_logger
-from true_mcp_exec import run_mcp_tool
+from prototype.sub_agents.helper import extract_json_block
+from app.utilities import dc_logger
+from prototype.sub_agents.true_mcp_exec import run_mcp_tool
 
 logger = dc_logger.LoggerAdap(dc_logger.get_logger(__name__))
 load_dotenv()
@@ -95,7 +95,7 @@ def get_planner_user_prompt(query: str, execution_history: List[Dict[str, str]])
     # Get background tasks status
     try:
         status_result = asyncio.run(run_mcp_tool("get_all_bg_task_status", {}))
-        if status_str["total"] == 0:
+        if status_result["total"] == 0:
             status_str="no background tasks have been dispatched yet"
         else:
             status_str = f"{status_result}"

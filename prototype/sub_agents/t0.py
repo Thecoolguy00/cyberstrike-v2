@@ -9,12 +9,12 @@ from typing import Dict, List, Optional
 from dotenv import load_dotenv
 
 # Agent imports
-from curl_graph_test_mcp import graph as curl_a
-from nmap_graph_test_mcp import graph as nmap_a
-from ferox_graph_test_mcp import graph as ferox_a
-from xss_graph_test_mcp import graph as xss_a
-from plan0 import plan_next_step
-import dc_logger
+from prototype.sub_agents.curl_graph_test_mcp import graph as curl_a
+from prototype.sub_agents.nmap_graph_test_mcp import graph as nmap_a
+from prototype.sub_agents.ferox_graph_test_mcp import graph as ferox_a
+from prototype.sub_agents.xss_graph_test_mcp import graph as xss_a
+from prototype.sub_agents.plan0 import plan_next_step
+from app.utilities import dc_logger
 
 logger = dc_logger.LoggerAdap(dc_logger.get_logger(__name__))
 
@@ -195,15 +195,18 @@ def run_master_loop(query: str, max_iterations: int = 20, verbose: bool = True):
 
 def main():
     """Run the master orchestrator."""
-    query = "Try to find as much info on target 10.82.162.223"
+    query = "Try to find as much info on target 127.0.0.1"
     
-    final_answer = run_master_loop(
-        query=query,
-        max_iterations=20,
-        verbose=True
-    )
-    
-    logger.info(f"Execution complete, final answer: \n {final_answer}")
+    try:
+        final_answer = run_master_loop(
+            query=query,
+            max_iterations=25,
+            verbose=True
+        )
+        
+        logger.info(f"Execution complete, final answer: \n {final_answer}")
+    except KeyboardInterrupt:
+        print("graceful shutdown")
 
 
 if __name__ == "__main__":

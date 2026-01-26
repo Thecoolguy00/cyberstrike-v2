@@ -12,8 +12,8 @@ from langchain_groq import ChatGroq
 from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.output_parsers import PydanticOutputParser
-from util import extract_json_block
-import dc_logger
+from prototype.sub_agents.helper import extract_json_block
+from app.utilities import dc_logger
 
 logger = dc_logger.LoggerAdap(dc_logger.get_logger(__name__))
 
