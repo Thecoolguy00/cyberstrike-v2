@@ -242,6 +242,22 @@ def get_all_bg_task_status() -> Dict:
     return get_background_task_status()
 
 
+#python execution
+from python_actions import execute_python
+
+@mcp.tool()
+def exe_cute_python(code:str, timeout:int=15):
+    """
+    Executes the python code and returns its output
+
+    Args:
+        code(str): The code to execute
+        timeout(int): timeout for code execution, defaults to 15
+    """
+
+    return execute_python(code=code, timeout=timeout)
+
+
 if __name__=="__main__":
     print("mcp server started")
     try:

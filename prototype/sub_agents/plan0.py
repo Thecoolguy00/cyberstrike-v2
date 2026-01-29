@@ -16,22 +16,19 @@ from langchain_core.output_parsers import PydanticOutputParser
 from prototype.sub_agents.helper import extract_json_block
 from app.utilities import dc_logger
 from prototype.sub_agents.true_mcp_exec import run_mcp_tool
+from app.utilities.llm_helper import LLMHelper
 
 logger = dc_logger.LoggerAdap(dc_logger.get_logger(__name__))
 load_dotenv()
 
 # LLM setup
-groq_llm = ChatGroq(
-    model="llama-3.3-70b-versatile",
-    api_key=os.getenv("GROQ_API_KEY", ""),
-    temperature=0.3
-)
+groq_llm=LLMHelper.get_llm_for_service("planner")
 
 # ============= Schemas =============
 
 class Task(BaseModel):
     """Single task for an agent."""
-    agent: str = Field(..., description="Agent name: nmap_a, ferox_a, curl_a, or xss_a")
+    agent: str = Field(..., description="Agent name: nmap_a, ferox_a, curl_a, python_a or xss_a")
     task_description: str = Field(..., description="Clear, specific task instruction")
 
 
@@ -75,6 +72,7 @@ AVAILABLE AGENTS:
 - nmap_a - Port/service discovery (start light, escalate if needed)
 - curl_a - HTTP inspection (headers, pages, endpoints)
 - ferox_a - Directory/file enumeration (only on confirmed web services)
+- python_a - For writing and executing python code
 - xss_a - XSS testing (only on confirmed input points)
 
 PLANNING RULES:

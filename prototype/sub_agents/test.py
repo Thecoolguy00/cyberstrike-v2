@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from prototype.sub_agents.curl_graph_test_mcp import graph as curl_a
 from prototype.sub_agents.nmap_graph_test_mcp import graph as nmap_a
 from prototype.sub_agents.ferox_graph_test_mcp import graph as ferox_a
+from prototype.sub_agents.python_req_graph_test_mcp import graph as python_a
 from prototype.sub_agents.xss_graph_test_mcp import graph as xss_a
 from prototype.sub_agents.plan0 import plan_next_step
 from app.utilities import dc_logger
@@ -51,7 +52,7 @@ def execute_agent(agent_name: str, task: str) -> str:
     Execute agent by name synchronously.
     
     Args:
-        agent_name: One of 'nmap_a', 'curl_a', 'ferox_a', 'xss_a'
+        agent_name: One of 'nmap_a', 'curl_a', 'ferox_a', 'xss_a', python_a
         task: Task description for the agent
     
     Returns:
@@ -61,6 +62,7 @@ def execute_agent(agent_name: str, task: str) -> str:
         "nmap_a": nmap_a,
         "curl_a": curl_a,
         "ferox_a": ferox_a,
+        "python_a": python_a,
         "xss_a": xss_a
     }
     

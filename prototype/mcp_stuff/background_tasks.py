@@ -115,6 +115,7 @@ class BackgroundTaskManager:
                 if lock_fd is not None:
                     self._release_file_lock(lock_fd)
 
+    #TODO add a command validator like in kai_command here
     # ---------------------- Task Launching ----------------------
     def run_background_task(
         self, command: str, args: List[str], max_runtime: int = 300
@@ -403,10 +404,8 @@ async def wait_for_task(task_id: str, timeout: int, poll_interval: float = 2.0):
 
 
 """
-Helper functions for running security tools in background with minimal boilerplate, this is a waiting fuction do we will not be using it
+Helper functions for running security tools in background with minimal boilerplate, this is a waiting fuction so we will not be using it
 """
-
-from prototype.mcp_stuff.background_tasks import launch_background_task, wait_for_task
 from pathlib import Path
 from typing import Optional, List, Dict, Tuple
 import asyncio
@@ -517,178 +516,178 @@ async def run_tool_background(
 
 
 # ============================================================================
-# Tool-specific wrappers (minimal code, just validates inputs)
+# Tool-specific wrappers (minimal code, just validates inputs), these are blocking and waiting ones, not good for our current usecase
 # ============================================================================
 
-async def run_feroxbuster(
-    url: str,
-    wordlist: str = "/usr/share/wordlists/dirb/common.txt",
-    threads: int = 50,
-    depth: int = 4,
-    extensions: Optional[List[str]] = None,
-    runtime: int = 300,
-    poll_interval: float = 2.0,
-    verbose: bool = True
-) -> Dict[str, any]:
-    """Run feroxbuster directory bruteforcer"""
+# async def run_feroxbuster(
+#     url: str,
+#     wordlist: str = "/usr/share/wordlists/dirb/common.txt",
+#     threads: int = 50,
+#     depth: int = 4,
+#     extensions: Optional[List[str]] = None,
+#     runtime: int = 300,
+#     poll_interval: float = 2.0,
+#     verbose: bool = True
+# ) -> Dict[str, any]:
+#     """Run feroxbuster directory bruteforcer"""
     
-    if not Path(wordlist).exists():
-        return {
-            "success": False,
-            "output": "",
-            "task_id": None,
-            "completed": False,
-            "error": f"Wordlist not found: {wordlist}"
-        }
+#     if not Path(wordlist).exists():
+#         return {
+#             "success": False,
+#             "output": "",
+#             "task_id": None,
+#             "completed": False,
+#             "error": f"Wordlist not found: {wordlist}"
+#         }
     
-    args = ["-u", url, "-w", wordlist, "-t", str(threads), "-d", str(depth)]
+#     args = ["-u", url, "-w", wordlist, "-t", str(threads), "-d", str(depth)]
     
-    if extensions:
-        args.extend(["-x", ",".join(extensions)])
+#     if extensions:
+#         args.extend(["-x", ",".join(extensions)])
     
-    return await run_tool_background("feroxbuster", args, runtime, poll_interval, verbose)
+#     return await run_tool_background("feroxbuster", args, runtime, poll_interval, verbose)
 
 
-async def run_gobuster(
-    url: str,
-    wordlist: str = "/usr/share/wordlists/dirb/common.txt",
-    threads: int = 50,
-    extensions: Optional[List[str]] = None,
-    runtime: int = 300,
-    poll_interval: float = 2.0,
-    verbose: bool = True
-) -> Dict[str, any]:
-    """Run gobuster directory bruteforcer"""
+# async def run_gobuster(
+#     url: str,
+#     wordlist: str = "/usr/share/wordlists/dirb/common.txt",
+#     threads: int = 50,
+#     extensions: Optional[List[str]] = None,
+#     runtime: int = 300,
+#     poll_interval: float = 2.0,
+#     verbose: bool = True
+# ) -> Dict[str, any]:
+#     """Run gobuster directory bruteforcer"""
     
-    if not Path(wordlist).exists():
-        return {
-            "success": False,
-            "output": "",
-            "task_id": None,
-            "completed": False,
-            "error": f"Wordlist not found: {wordlist}"
-        }
+#     if not Path(wordlist).exists():
+#         return {
+#             "success": False,
+#             "output": "",
+#             "task_id": None,
+#             "completed": False,
+#             "error": f"Wordlist not found: {wordlist}"
+#         }
     
-    args = ["dir", "-u", url, "-w", wordlist, "-t", str(threads)]
+#     args = ["dir", "-u", url, "-w", wordlist, "-t", str(threads)]
     
-    if extensions:
-        args.extend(["-x", ",".join(extensions)])
+#     if extensions:
+#         args.extend(["-x", ",".join(extensions)])
     
-    return await run_tool_background("gobuster", args, runtime, poll_interval, verbose)
+#     return await run_tool_background("gobuster", args, runtime, poll_interval, verbose)
 
 
-async def run_nmap(
-    target: str,
-    ports: str = "-p-",
-    scan_type: str = "-sV",
-    additional_args: Optional[List[str]] = None,
-    runtime: int = 600,
-    poll_interval: float = 5.0,
-    verbose: bool = True
-) -> Dict[str, any]:
-    """Run nmap port scanner"""
+# async def run_nmap(
+#     target: str,
+#     ports: str = "-p-",
+#     scan_type: str = "-sV",
+#     additional_args: Optional[List[str]] = None,
+#     runtime: int = 600,
+#     poll_interval: float = 5.0,
+#     verbose: bool = True
+# ) -> Dict[str, any]:
+#     """Run nmap port scanner"""
     
-    args = [scan_type, ports, target]
+#     args = [scan_type, ports, target]
     
-    if additional_args:
-        args.extend(additional_args)
+#     if additional_args:
+#         args.extend(additional_args)
     
-    return await run_tool_background("nmap", args, runtime, poll_interval, verbose)
+#     return await run_tool_background("nmap", args, runtime, poll_interval, verbose)
 
 
-async def run_nikto(
-    target: str,
-    port: int = 80,
-    ssl: bool = False,
-    runtime: int = 600,
-    poll_interval: float = 5.0,
-    verbose: bool = True
-) -> Dict[str, any]:
-    """Run nikto web server scanner"""
+# async def run_nikto(
+#     target: str,
+#     port: int = 80,
+#     ssl: bool = False,
+#     runtime: int = 600,
+#     poll_interval: float = 5.0,
+#     verbose: bool = True
+# ) -> Dict[str, any]:
+#     """Run nikto web server scanner"""
     
-    args = ["-h", target, "-p", str(port)]
+#     args = ["-h", target, "-p", str(port)]
     
-    if ssl:
-        args.append("-ssl")
+#     if ssl:
+#         args.append("-ssl")
     
-    return await run_tool_background("nikto", args, runtime, poll_interval, verbose)
+#     return await run_tool_background("nikto", args, runtime, poll_interval, verbose)
 
 
-async def run_wpscan(
-    url: str,
-    enumerate: str = "vp,vt,u",
-    runtime: int = 600,
-    poll_interval: float = 5.0,
-    verbose: bool = True
-) -> Dict[str, any]:
-    """Run wpscan WordPress scanner"""
+# async def run_wpscan(
+#     url: str,
+#     enumerate: str = "vp,vt,u",
+#     runtime: int = 600,
+#     poll_interval: float = 5.0,
+#     verbose: bool = True
+# ) -> Dict[str, any]:
+#     """Run wpscan WordPress scanner"""
     
-    args = ["--url", url, "--enumerate", enumerate]
+#     args = ["--url", url, "--enumerate", enumerate]
     
-    return await run_tool_background("wpscan", args, runtime, poll_interval, verbose)
+#     return await run_tool_background("wpscan", args, runtime, poll_interval, verbose)
 
 
-async def run_ffuf(
-    url: str,
-    wordlist: str = "/usr/share/wordlists/dirb/common.txt",
-    keyword: str = "FUZZ",
-    match_codes: str = "200,204,301,302,307,401,403,405",
-    threads: int = 40,
-    runtime: int = 300,
-    poll_interval: float = 2.0,
-    verbose: bool = True
-) -> Dict[str, any]:
-    """Run ffuf fuzzer"""
+# async def run_ffuf(
+#     url: str,
+#     wordlist: str = "/usr/share/wordlists/dirb/common.txt",
+#     keyword: str = "FUZZ",
+#     match_codes: str = "200,204,301,302,307,401,403,405",
+#     threads: int = 40,
+#     runtime: int = 300,
+#     poll_interval: float = 2.0,
+#     verbose: bool = True
+# ) -> Dict[str, any]:
+#     """Run ffuf fuzzer"""
     
-    if not Path(wordlist).exists():
-        return {
-            "success": False,
-            "output": "",
-            "task_id": None,
-            "completed": False,
-            "error": f"Wordlist not found: {wordlist}"
-        }
+#     if not Path(wordlist).exists():
+#         return {
+#             "success": False,
+#             "output": "",
+#             "task_id": None,
+#             "completed": False,
+#             "error": f"Wordlist not found: {wordlist}"
+#         }
     
-    fuzz_url=url.strip()+keyword
+#     fuzz_url=url.strip()+keyword
     
-    args = [
-        "-u", fuzz_url,
-        "-w", wordlist,
-        "-mc", match_codes,
-        "-t", str(threads)
-    ]
+#     args = [
+#         "-u", fuzz_url,
+#         "-w", wordlist,
+#         "-mc", match_codes,
+#         "-t", str(threads)
+#     ]
     
-    return await run_tool_background("ffuf", args, runtime, poll_interval, verbose)
+#     return await run_tool_background("ffuf", args, runtime, poll_interval, verbose)
 
 
 # ============================================================================
 # Example usage
 # ============================================================================
 
-async def main():
-    """Example: Run multiple tools concurrently"""
+# async def main():
+#     """Example: Run multiple tools concurrently"""
     
-    target = "http://example.com"
+#     target = "http://example.com"
     
-    # Run multiple tools in parallel
-    results = await asyncio.gather(
-        run_feroxbuster(target, runtime=120),
-        run_nikto(target, runtime=300),
-        run_nmap("example.com", runtime=600),
-    )
+#     # Run multiple tools in parallel
+#     results = await asyncio.gather(
+#         run_feroxbuster(target, runtime=120),
+#         run_nikto(target, runtime=300),
+#         run_nmap("example.com", runtime=600),
+#     )
     
-    print("\n" + "="*60)
-    print("RESULTS SUMMARY")
-    print("="*60)
+#     print("\n" + "="*60)
+#     print("RESULTS SUMMARY")
+#     print("="*60)
     
-    for i, result in enumerate(results, 1):
-        print(f"\nTool {i}:")
-        print(f"  Success: {result['success']}")
-        print(f"  Completed: {result['completed']}")
-        print(f"  Task ID: {result['task_id']}")
-        if result['error']:
-            print(f"  Error: {result['error']}")
-        print(f"  Output length: {len(result['output'])} chars")
+#     for i, result in enumerate(results, 1):
+#         print(f"\nTool {i}:")
+#         print(f"  Success: {result['success']}")
+#         print(f"  Completed: {result['completed']}")
+#         print(f"  Task ID: {result['task_id']}")
+#         if result['error']:
+#             print(f"  Error: {result['error']}")
+#         print(f"  Output length: {len(result['output'])} chars")
 
 
 # if __name__ == "__main__":

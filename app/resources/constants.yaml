@@ -4,6 +4,7 @@ llm_models:
   default_model: llama-3.3-70b-versatile"
   
   # agent-specific models (optional overrides)
+  planner: llama-3.3-70b-versatile
   python_req_a: "llama-3.3-70b-versatile"
   nmap_a: "llama-3.3-70b-versatile"
   curl_a: "llama-3.3-70b-versatile"
@@ -13,7 +14,7 @@ llm_models:
 #available agents
 #moonshot_kimi_k2_instruct_0905
 #gpt-oss-120b
-#gemini_2_5_flash
+#gemini_2_5_flash, other models, see llm_factory.py
 #llama-3.3-70b-versatile
 
 mongodb_config:

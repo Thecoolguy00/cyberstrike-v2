@@ -24,22 +24,18 @@ class NmapState(BaseState):
 tool_list=asyncio.run(get_mcp_tools())
 
 #these are mcp tool that are not executable with our custom langgraph tool pipline so we made a custom mcp node for it
-nmap_tool_names = [
-    "basic_scan",
-    "aggressive_scan",
-    "noping_version_scan",
-    "script_scan",
-    "start_nmap_long_scan",
-    "get_task_output_mcp"
+python_tool_names = [
+    "exe_cute_python"
 ]
-nmap_tool_list=[t for t in tool_list if t.name in nmap_tool_names]
+python_tool_list=[t for t in tool_list if t.name in python_tool_names]
 
-mcp_tool_schema=extract_tool_Schema(nmap_tool_list)
+mcp_tool_schema=extract_tool_Schema(python_tool_list)
 normal_tool_schema=tool_schema_from_func([search_tavily])
 
 tool_schema=mcp_tool_schema+normal_tool_schema
 
-agent_prompt="You are a expert nmap agent, answer the users query using available tools"
+#just seeing that im not using it anywhere, TODO remove it later from every agent
+agent_prompt="You are a expert python executor agent, answer the users query using available tools"
 
 async def init_graph():
 
@@ -56,7 +52,7 @@ async def init_graph():
             state=state)
         
         messages = [
-            SystemMessage(content=get_agent_system_message(agent_type="nmap",tool_schema=tool_schema)),
+            SystemMessage(content=get_agent_system_message(agent_type="python_executor",tool_schema=tool_schema)),
             HumanMessage(content=prompt)
         ]
 
@@ -69,12 +65,12 @@ async def init_graph():
     flow=StateGraph(NmapState)
 
     flow.add_node("mcp_exec",mcp_exec_node)
-    flow.add_node("nmap_agent",agent_node)
+    flow.add_node("python_agent",agent_node)
     flow.add_node("tools",ToolNode([search_tavily]))
 
-    flow.add_edge(START,"nmap_agent")
+    flow.add_edge(START,"python_agent")
     flow.add_conditional_edges(
-        "nmap_agent",
+        "python_agent",
         tool_router,
         {
             "mcp_exec": "mcp_exec",
@@ -82,8 +78,8 @@ async def init_graph():
             END: END
         }
     )
-    flow.add_edge("tools","nmap_agent")
-    flow.add_edge("mcp_exec","nmap_agent")
+    flow.add_edge("tools","python_agent")
+    flow.add_edge("mcp_exec","python_agent")
     graph=flow.compile()
 
     return graph
