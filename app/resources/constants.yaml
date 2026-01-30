@@ -4,10 +4,10 @@ llm_models:
   default_model: llama-3.3-70b-versatile"
   
   # agent-specific models (optional overrides)
-  planner: llama-3.3-70b-versatile
+  planner: "gemini_2_5_flash"
   python_req_a: "llama-3.3-70b-versatile"
   nmap_a: "llama-3.3-70b-versatile"
-  curl_a: "llama-3.3-70b-versatile"
+  curl_a: "moonshot_kimi_k2_instruct_0905"
   xss_a: "llama-3.3-70b-versatile"
   ferox_a: "llama-3.3-70b-versatile"
 

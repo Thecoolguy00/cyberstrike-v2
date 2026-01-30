@@ -46,8 +46,14 @@ class CommandRunner:
         err = proc.stderr or ""
         return out + err
 
-    def port_args(self, ports: Optional[Sequence[Union[int, str]]]) -> List[str]:
-        """Return ['-p', '22,80'] if ports present, else []"""
+    def port_args(self, ports: Optional[Sequence[str]]) -> List[str]:
+        """
+        Formats ports into CLI syntax
+        Adds -p
+        Joins list items with commas
+
+        Return ['-p', '22,80'] if ports present, else []
+        """
         if not ports:
             return []
         return ["-p", ",".join(map(str, ports))]

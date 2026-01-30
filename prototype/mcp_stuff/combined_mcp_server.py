@@ -11,11 +11,19 @@ from prototype.mcp_stuff.nmap_actions import basic_scan_action,script_scan_actio
 
 #helper fucntion for normalising ports
 
-def port_args(ports: Optional[Sequence[Union[int, str]]]) -> List[str]:
-    """Return ['-p', '22,80'] if ports present, else []"""
+def normalize_ports(ports: Optional[Union[str, List[str]]]) -> List[str]:
+    """
+    Fixes type shape
+    Converts:
+    "1-1000" → ["1-1000"]
+    None → []
+    Guarantees List[str]
+    """
     if not ports:
         return []
-    return ["-p", ",".join(map(str, ports))]
+    if isinstance(ports, str):
+        return [ports]
+    return ports
 
 @mcp.tool()
 def basic_scan(target: str) ->str:
@@ -30,7 +38,7 @@ def basic_scan(target: str) ->str:
     return basic_scan_action(target)
 
 @mcp.tool()
-def aggressive_scan(target: str, ports: Optional[list[str]] = None) -> str:
+def aggressive_scan(target: str, ports: Optional[Union[str, List[str]]] = None) -> str:
     """Perform an nmap aggressive network scan using -A parameter(includes OS detection, version detection, default script scanning, and traceroute)
 
     Args:
@@ -40,11 +48,11 @@ def aggressive_scan(target: str, ports: Optional[list[str]] = None) -> str:
     Returns:
         str: The output results of the intense scan.
     """
-    ports = ports or []
+    ports = normalize_ports(ports)
     return aggressive_scan_action(target,ports)
 
 @mcp.tool()
-def noping_version_scan(target: str, ports: Optional[list[str]] = None) -> str:
+def noping_version_scan(target: str, ports: Optional[Union[str, List[str]]] = None) -> str:
     """Perform an nmap service scan with ping diabled, this is the recommened scan w/wo ports.
 
     Args:
@@ -54,11 +62,11 @@ def noping_version_scan(target: str, ports: Optional[list[str]] = None) -> str:
     Returns:
         str: The output results of the recommended scan.
     """
-    ports = ports or []
+    ports = normalize_ports(ports)
     return noping_version_scan_action(target,ports)
 
 @mcp.tool()
-def script_scan(target: str, script: str, ports: list[str]) -> str:
+def script_scan(target: str, script: str, ports: Optional[Union[str, List[str]]] = None) -> str:
     """Perform an nmap script scan on specified port and target
 
     Args:
@@ -69,7 +77,7 @@ def script_scan(target: str, script: str, ports: list[str]) -> str:
     Returns:
         str: The output results of the script scan.
     """
-    ports = ports or []
+    ports = normalize_ports(ports)
     return script_scan_action(target,script,ports)
 
 #curl for getting headers and page content
@@ -154,7 +162,7 @@ from prototype.mcp_stuff.background_tasks import launch_background_task, get_bac
 @mcp.tool()
 def start_nmap_long_scan(
     target: str,
-    ports: List[str]=["1-9000"],
+    ports: Union[str, List[str]] = ["1-9000"],
     max_runtime: int = 900
 ) -> Dict:
     """
@@ -167,7 +175,7 @@ def start_nmap_long_scan(
     """
     task_id, output_file = launch_background_task(
         cmd="nmap",
-        args=port_args(ports=ports) + [target],
+        args=normalize_ports(ports=ports) + [target],
         max_runtime=max_runtime
     )
 
@@ -243,7 +251,7 @@ def get_all_bg_task_status() -> Dict:
 
 
 #python execution
-from python_actions import execute_python
+from prototype.mcp_stuff.python_actions import execute_python
 
 @mcp.tool()
 def exe_cute_python(code:str, timeout:int=15):

@@ -4,6 +4,8 @@ Iterative planner for cybersecurity task orchestration.
 Uses plan-execute-feedback loop for adaptive task generation.
 """
 
+#TODO This is a one planner(kinda master) approach, too much for one agent, make it a dual master who can communicate to each other 
+
 import os
 import asyncio
 from typing import List, TypedDict, Dict

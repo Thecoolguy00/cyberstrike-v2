@@ -29,7 +29,7 @@ STRATEGY:
 4. Only use script_scan when you know specific ports
 5. If not finding anything 
 
-Port format: 
+Port format example: 
 - for single port: ["21"]
 - for multiple port: ["22","232"]
 - for port range ["1-1000"]
