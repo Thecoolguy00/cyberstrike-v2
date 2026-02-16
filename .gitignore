@@ -7,8 +7,9 @@
 #venv
 langgraph-env/
 
-#temp files
+#test jupyter files
 test.ipynb
+*_test.ipynb
 
 
 #langgraph related

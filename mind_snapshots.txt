@@ -1,4 +1,0 @@
-problem: so we aren't using ToolNode because langchain warps its MCP tools in something which we are unable to clone
-solution: build a mcp node which excutes a mcp tool using fastmcp and appends a synthethic ToolMessage to the message state
-
-to do

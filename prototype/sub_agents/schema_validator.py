@@ -5,10 +5,11 @@ from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_t
 from langchain_core.output_parsers import PydanticOutputParser
 import json
 from app.utilities import dc_logger
+
 logger = dc_logger.LoggerAdap(dc_logger.get_logger(__name__))
 
-#extracting text from different message schema, here because importing parser as a standalone in ipynb raises a error
 def extract_text(msg) -> str:
+    """Extract text from different message schemas."""
     if isinstance(msg, str):
         return msg
 
@@ -23,68 +24,123 @@ def extract_text(msg) -> str:
 
     return str(msg)
 
+
 class AgentResponse(BaseModel):
-    thinking: str=Field(..., description="Reasoning or explanation")
-    message: Optional[str]=Field(None, description="Natural language reply for the user")
-    tool_name: Optional[str]=Field(None, description="Name of the tool to call")
-    args: Optional[Dict[str, Any]]=Field(None, description="Arguments for the tool call")
+    """Unified agent response schema."""
+    thinking: str = Field(..., description="Step-by-step reasoning")
+    tool: Optional[str] = Field(None, description="Tool name or null")
+    args: Optional[Dict[str, Any]] = Field(None, description="Tool arguments or null")
+    message: Optional[str] = Field(None, description="Response text or null")
 
     @model_validator(mode="before")
-    def normalize_empty_strings(cls, values):
-        for key in ("message", "tool_name", "args"):
+    def normalize_empty_values(cls, values):
+        """Convert empty strings and empty dicts to None."""
+        for key in ("tool", "message"):
             if values.get(key) == "":
                 values[key] = None
+        
+        # Handle empty args dict
+        if values.get("args") is not None and len(values.get("args", {})) == 0:
+            values["args"] = None
+            
         return values
 
     @model_validator(mode="after")
-    def validate_schema(self):
+    def validate_mutual_exclusion(self):
+        """Ensure tool OR message, never both."""
         has_message = self.message is not None
-        has_tool = self.tool_name is not None
-        has_args = self.args is not None and len(self.args) > 0
+        has_tool = self.tool is not None
+        has_args = self.args is not None
 
+        # Case 1: Message response
         if has_message:
             if has_tool or has_args:
                 raise ValueError(
-                    "If 'message' is present, 'tool_name' and 'args' must not be present"
+                    "Cannot have both 'message' and tool fields. "
+                    "Set tool=null and args=null when using message."
                 )
             return self
 
+        # Case 2: Tool call
         if has_tool:
             if not has_args:
                 raise ValueError(
-                    "If 'tool_name' is present, 'args' must be a non-empty object"
+                    f"Tool '{self.tool}' requires 'args' as a non-empty dict"
+                )
+            if has_message:
+                raise ValueError(
+                    "Cannot have both 'tool' and 'message'. "
+                    "Set message=null when using a tool."
                 )
             return self
 
+        # Case 3: Invalid - neither message nor tool
         raise ValueError(
-            "Response must contain either 'thinking' and 'message' OR 'thinking' and ('tool_name' and 'args')"
+            "Response must have either 'message' (with tool=null, args=null) "
+            "OR 'tool' + 'args' (with message=null)"
         )
 
-    
 
-#parser
-parser=PydanticOutputParser(pydantic_object=AgentResponse)
+# Parser instance
+parser = PydanticOutputParser(pydantic_object=AgentResponse)
+
 
 def log_retry(retry_state):
+    """Log retry attempts."""
     err = retry_state.outcome.exception()
-    logger.error(f"[RETRY] {retry_state.attempt_number} due to {type(err).__name__}")
+    logger.warning(
+        f"Retry attempt {retry_state.attempt_number}/3 - "
+        f"Error: {type(err).__name__}: {str(err)}"
+    )
+
 
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_fixed(2),
-    retry=retry_if_exception_type((ValueError, json.JSONDecodeError)), 
+    retry=retry_if_exception_type((ValueError, json.JSONDecodeError)),
     reraise=True,
     before_sleep=log_retry
 )
 def invoke_and_validate(llm, messages):
-
-    response=llm.invoke(messages)
-    raw_data=extract_text(response.content)
+    """Invoke LLM and validate response against schema with retries."""
     
-    #validate and retry on error
-    parsed=parser.parse(raw_data)
-
-    #replaced the response.content with flatened dict of validated pydantic object
-    response.content=parsed.model_dump_json()
+    # Get raw response
+    response = llm.invoke(messages)
+    raw_data = extract_text(response.content)
+    
+    # Log raw response for debugging
+    logger.debug(f"Raw LLM response: {raw_data[:200]}...")
+    
+    # Parse and validate
+    try:
+        parsed = parser.parse(raw_data)
+    except Exception as e:
+        logger.error(f"Parse error: {e}\nRaw: {raw_data}")
+        raise
+    
+    # Replace content with validated JSON
+    response.content = parsed.model_dump_json()
+    
+    # Log parsed fields for debugging
+    logger.info(
+        f"Validated response - "
+        f"Tool: {parsed.tool or 'none'}, "
+        f"Message: {'yes' if parsed.message else 'no'}"
+    )
+    
     return response
 
+
+def extract_agent_decision(response: AIMessage) -> tuple[Optional[str], Optional[dict], Optional[str]]:
+    """
+    Extract tool, args, and message from validated response.
+    
+    Returns:
+        (tool_name, args, message) tuple
+    """
+    try:
+        data = json.loads(response.content)
+        return data.get("tool"), data.get("args"), data.get("message")
+    except json.JSONDecodeError:
+        logger.error(f"Failed to decode response content: {response.content}")
+        return None, None, None

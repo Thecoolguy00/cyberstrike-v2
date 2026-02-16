@@ -5,17 +5,19 @@ llm_models:
   
   # agent-specific models (optional overrides)
   planner: "gemini_2_5_flash"
-  python_req_a: "llama-3.3-70b-versatile"
+  python_req_a: "gpt-oss-120b"
   nmap_a: "llama-3.3-70b-versatile"
   curl_a: "moonshot_kimi_k2_instruct_0905"
   xss_a: "llama-3.3-70b-versatile"
-  ferox_a: "llama-3.3-70b-versatile"
+  ferox_a: "moonshot_kimi_k2_instruct_0905"
 
 #available agents
 #moonshot_kimi_k2_instruct_0905
 #gpt-oss-120b
 #gemini_2_5_flash, other models, see llm_factory.py
 #llama-3.3-70b-versatile
+#mistral_large
+#mistral_medium
 
 mongodb_config:
   db_name: "Cyberstrike_p0_DB"

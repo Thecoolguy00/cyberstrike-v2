@@ -11,17 +11,5 @@ class SupportedLlms(Enum):
     GPT_4O_MINI = "gpt_4o_mini"
     O1_PREVIEW = "o1_preview"
     O1_MINI = "o1_mini"
-
-class ChatState(Enum):
-    TESTING = "testing"
-    TEST_CASE = "test_case"
-    FINAL_REPORT = "final_report"
-
-class ChatType(Enum):
-    QUICK_SESSION = "quick_session"
-    TEST_CASE_DISCOVERY = "test_case_discovery"
-    GENERAL_CHAT = "general_chat"
-
-class NotificationStatus(Enum):
-    UNREAD = "unread"
-    READ = "read"
+    MISTRAL_LARGE="mistral_large"
+    MISTRAL_MEDIUM="mistral_medium"

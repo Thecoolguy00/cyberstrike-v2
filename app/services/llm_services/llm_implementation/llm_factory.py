@@ -1,6 +1,7 @@
 from app.services.llm_services.llm_implementation.gemini_models import Gemini25FlashLLM, Gemini25FlashLiteLLM, Gemini25ProLLM
 from app.services.llm_services.llm_implementation.openai_models import GPT4oLLM, GPT4oMiniLLM, O1PreviewLLM, O1MiniLLM
 from app.services.llm_services.llm_implementation.groq_models import Llama3GroqLLM, MoonshotKimiGroqLLM, GPTOSS120bGroqLLM
+from app.services.llm_services.llm_implementation.mistral_model import MistralLargeLLM, MistralMediumLLM
 from app.services.llm_services.llm_interface import LLMInterface
 from app.utilities.dc_enums import SupportedLlms
 
@@ -43,5 +44,9 @@ class LlmFactory:
             return O1PreviewLLM()
         elif type == SupportedLlms.O1_MINI.value:
             return O1MiniLLM()
+        elif type==SupportedLlms.MISTRAL_LARGE.value:
+            return MistralLargeLLM()
+        elif type==SupportedLlms.MISTRAL_MEDIUM.value:
+            return MistralMediumLLM()
         else:
             raise ValueError(f"No matching LLM implementation found for type: {type}")

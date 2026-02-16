@@ -1,12 +1,12 @@
 from mcp.server.fastmcp import FastMCP
-from prototype.mcp_stuff.feroxbuster_actions import run_feroxbuster
-from typing import Dict, List, Sequence, Union
+from typing import Dict, List, Sequence, Union, Optional
 from pathlib import Path
 
 mcp=FastMCP(name="combined_tools",host="0.0.0.0",port=4545)
 
 #nmap for network scan
-from typing import Optional
+from prototype.mcp_stuff.kali_command import CommandRunner
+nmap_port_mapper=CommandRunner.port_args
 from prototype.mcp_stuff.nmap_actions import basic_scan_action,script_scan_action,aggressive_scan_action,noping_version_scan_action
 
 #helper fucntion for normalising ports
@@ -24,6 +24,17 @@ def normalize_ports(ports: Optional[Union[str, List[str]]]) -> List[str]:
     if isinstance(ports, str):
         return [ports]
     return ports
+
+def is_large_port_range(p: str, max_span: int = 5000) -> bool:
+    """Checks if the port range is larger than the allowed range"""
+    if "-" not in p:
+        return False
+    try:
+        start, end = map(int, p.split("-", 1))
+        return (end - start) > max_span
+    except ValueError:
+        return False
+
 
 @mcp.tool()
 def basic_scan(target: str) ->str:
@@ -49,6 +60,11 @@ def aggressive_scan(target: str, ports: Optional[Union[str, List[str]]] = None) 
         str: The output results of the intense scan.
     """
     ports = normalize_ports(ports)
+
+    for p in ports:
+        if is_large_port_range(p):
+            return "error: port ranges larger than 5000 are not allowed in foreground scans"
+        
     return aggressive_scan_action(target,ports)
 
 @mcp.tool()
@@ -63,6 +79,11 @@ def noping_version_scan(target: str, ports: Optional[Union[str, List[str]]] = No
         str: The output results of the recommended scan.
     """
     ports = normalize_ports(ports)
+
+    for p in ports:
+        if is_large_port_range(p):
+            return "error: port ranges larger than 5000 are not allowed in foreground scans"
+
     return noping_version_scan_action(target,ports)
 
 @mcp.tool()
@@ -78,6 +99,11 @@ def script_scan(target: str, script: str, ports: Optional[Union[str, List[str]]]
         str: The output results of the script scan.
     """
     ports = normalize_ports(ports)
+
+    for p in ports:
+        if is_large_port_range(p):
+            return "error: port ranges larger than 5000 are not allowed in foreground scans"
+
     return script_scan_action(target,script,ports)
 
 #curl for getting headers and page content
@@ -162,7 +188,7 @@ from prototype.mcp_stuff.background_tasks import launch_background_task, get_bac
 @mcp.tool()
 def start_nmap_long_scan(
     target: str,
-    ports: Union[str, List[str]] = ["1-9000"],
+    ports: Union[str, List[str]] = None,
     max_runtime: int = 900
 ) -> Dict:
     """
@@ -175,7 +201,7 @@ def start_nmap_long_scan(
     """
     task_id, output_file = launch_background_task(
         cmd="nmap",
-        args=normalize_ports(ports=ports) + [target],
+        args=nmap_port_mapper(normalize_ports(ports=ports or "1-9000")) + [target],
         max_runtime=max_runtime
     )
 

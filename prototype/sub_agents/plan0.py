@@ -7,7 +7,7 @@ Uses plan-execute-feedback loop for adaptive task generation.
 #TODO This is a one planner(kinda master) approach, too much for one agent, make it a dual master who can communicate to each other 
 
 import os
-import asyncio
+import asyncio, json
 from typing import List, TypedDict, Dict
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
@@ -34,7 +34,7 @@ class Task(BaseModel):
     task_description: str = Field(..., description="Clear, specific task instruction")
 
 
-class Plan(BaseModel):
+class Plan(BaseModel): 
     """Plan containing tasks and optional final answer."""
     plan: List[Task] = Field(
         default_factory=list,
@@ -44,6 +44,7 @@ class Plan(BaseModel):
         default="",
         description="Summary answer when complete"
     )
+    thinking:str=Field(..., description="Explain your reasoning for current plan")
 
 
 class GraphState(TypedDict):
@@ -52,6 +53,7 @@ class GraphState(TypedDict):
     plan: List[dict]
     execution_history: List[Dict[str, str]]  # List of {agent, task, result}
     final_answer: str
+    thinking:str
 
 
 # Parser
@@ -84,6 +86,7 @@ PLANNING RULES:
 3. Order tasks logically (dependencies first)
 4. Escalate scan intensity when light scans yield nothing
 5. When objective is met, return empty plan + final_answer
+6. for every plan explaining for the current plan in the "thinking"
 
 OUTPUT FORMAT:
 """ + parser.get_format_instructions()
@@ -95,10 +98,18 @@ def get_planner_user_prompt(query: str, execution_history: List[Dict[str, str]])
     # Get background tasks status
     try:
         status_result = asyncio.run(run_mcp_tool("get_all_bg_task_status", {}))
-        if status_result["total"] == 0:
-            status_str="no background tasks have been dispatched yet"
+        # if status_result["total"] == 0:
+        #     status_str="no background tasks have been dispatched yet"
+        # else:
+        #     status_str = f"{status_result}"
+        if not isinstance(status_result, dict):
+            status_str = str(status_result)
         else:
-            status_str = f"{status_result}"
+            if status_result.get("total", 0) == 0:
+                status_str = "no background tasks have been dispatched yet"
+            else:
+                status_str = json.dumps(status_result, indent=2)
+
     except Exception as e:
         status_str = f"Error fetching - {str(e)}"
     
@@ -111,9 +122,12 @@ def get_planner_user_prompt(query: str, execution_history: List[Dict[str, str]])
             # Truncate long results for readability
             result = ex.get("result", "No result")
             result_preview = (
-                result[:200] + "..." if len(result) > 200 else result
+                # result[:200] + "..." if len(result) > 200 else result
+                result
             )
-            
+            if i==len(execution_history)-1:
+                logger.info(f"result_preview:\n{result_preview}")
+
             history_items.append(
                 f"{i}. [{ex['agent']}] {ex['task']}\n"
                 f"   ➜ Result: {result_preview}"
@@ -236,5 +250,6 @@ def plan_next_step(
     return {
         "plan": result.get("plan", []),
         "final_answer": result.get("final_answer", ""),
-        "is_complete": bool(result.get("final_answer")) or not result.get("plan")
+        "is_complete": bool(result.get("final_answer")) or not result.get("plan"),
+        "thinking": result.get("thinking","")
     }
