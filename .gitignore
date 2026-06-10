@@ -7,9 +7,13 @@
 #venv
 langgraph-env/
 
-#test jupyter files
+#test files/folders
 test.ipynb
+test/
 *_test.ipynb
+testing_RAG/
+LocalAIAgentWithRAG/
+playwright-automation/
 
 
 #langgraph related
