@@ -1,6 +1,8 @@
 from enum import Enum
 
 class SupportedLlms(Enum):
+    OPENROUTER_DEEPSEEK_V4_FLASH = "openrouter_deepseek_v4_flash"
+    OPENROUTER_TENCENT_HY3_PREVIEW = "openrouter_tencent_hy3_preview"
     LLAMA3_GROQ_70B_VERSATILE = "llama-3.3-70b-versatile"
     MOONSHOT_KIMI_K2_INSTRUCT_0905 = "moonshot_kimi_k2_instruct_0905"
     GPT_OSS_120B = "gpt-oss-120b"
