@@ -1,5 +1,6 @@
 from typing import Optional
 from prototype.mcp_stuff.kali_command import CommandRunner
+from prototype.mcp_stuff.helper import encode_url_params
 
 class XssCommand(CommandRunner):
     def __init__(self):
@@ -9,9 +10,12 @@ def xsstrike_basic_scan_action(target: str) -> str:
     """
     Basic XSStrike scan
     For example: xsstrike -u "https://target.com/"
+    Query parameter values are automatically URL-encoded so XSS payloads
+    containing < > pass the command validator.
     """
     cmd = XssCommand()
-    command=[cmd.command_name]+["-u",f"{target}"] # targets url with parameter will break if the url is not stringified
+    safe_target = encode_url_params(target)
+    command = [cmd.command_name] + ["-u", safe_target]
     return cmd.execute(command)
 
 #xsstrike requires a confirmation after finding a reflection...what to do...

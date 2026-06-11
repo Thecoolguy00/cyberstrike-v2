@@ -26,7 +26,8 @@ tool_list=asyncio.run(get_mcp_tools())
 #these are mcp tool that are not executable with our custom pipline so we use our custom mcp node for it
 curl_tool_names = [
     "get_header",
-    "get_page"
+    "get_full_page",
+    "get_partial_page"
 ]
 curl_tool_list=[t for t in tool_list if t.name in curl_tool_names]
 
