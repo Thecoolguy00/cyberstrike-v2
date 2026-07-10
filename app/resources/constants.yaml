@@ -4,8 +4,11 @@ llm_models:
   default_model: openrouter_deepseek_v4_flash"
   
   # agent-specific models (optional overrides)
+  strategic_planner: openrouter_deepseek_v4_flash
+  tactical_planner: openrouter_deepseek_v4_pro
+  vuln_advisor: openrouter_deepseek_v4_flash
   planner: "openrouter_deepseek_v4_flash"
-  python_req_a: "openrouter_deepseek_v4_flash"
+  python_req_a: "openrouter_deepseek_v4_pro"
   nmap_a: "openrouter_deepseek_v4_flash"
   curl_a: "openrouter_deepseek_v4_flash"
   xss_a: "openrouter_deepseek_v4_flash"
@@ -15,6 +18,7 @@ llm_models:
 #moonshot_kimi_k2_instruct_0905
 #gpt-oss-120b
 #openrouter_deepseek_v4_flash
+#openrouter_deepseek_v4_pro
 #openrouter_tencent_hy3_preview
 #gemini_2_5_flash, other models, see llm_factory.py
 #llama-3.3-70b-versatile

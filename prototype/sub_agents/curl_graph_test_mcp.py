@@ -12,7 +12,7 @@ from prototype.sub_agents.true_mcp_exec import get_mcp_tools
 from prototype.sub_agents.search_actions import search_tavily
 from prototype.sub_agents.schema_validator import invoke_and_validate
 from prototype.sub_agents.prompt import get_agent_system_message, get_agent_user_message
-from prototype.sub_agents.schema import BaseState
+from prototype.sub_agents.schemas import BaseState
 
 from app.utilities.llm_helper import LLMHelper
 
@@ -26,7 +26,8 @@ tool_list=asyncio.run(get_mcp_tools())
 #these are mcp tool that are not executable with our custom pipline so we use our custom mcp node for it
 curl_tool_names = [
     "get_header",
-    "get_page"
+    "get_full_page",
+    "get_partial_page"
 ]
 curl_tool_list=[t for t in tool_list if t.name in curl_tool_names]
 
