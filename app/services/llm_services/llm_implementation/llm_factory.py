@@ -2,7 +2,7 @@ from app.services.llm_services.llm_implementation.gemini_models import Gemini25F
 from app.services.llm_services.llm_implementation.openai_models import GPT4oLLM, GPT4oMiniLLM, O1PreviewLLM, O1MiniLLM
 from app.services.llm_services.llm_implementation.groq_models import Llama3GroqLLM, MoonshotKimiGroqLLM, GPTOSS120bGroqLLM
 from app.services.llm_services.llm_implementation.mistral_model import MistralLargeLLM, MistralMediumLLM
-from app.services.llm_services.llm_implementation.openrouter_models import DeepseekV4FlashOpenRouterLLM, TencentHy3PreviewOpenRouterLLM
+from app.services.llm_services.llm_implementation.openrouter_models import DeepseekV4FlashOpenRouterLLM, TencentHy3PreviewOpenRouterLLM, DeepseekV4ProOpenRouterLLM
 from app.services.llm_services.llm_interface import LLMInterface
 from app.utilities.dc_enums import SupportedLlms
 
@@ -53,5 +53,7 @@ class LlmFactory:
             return DeepseekV4FlashOpenRouterLLM()
         elif type==SupportedLlms.OPENROUTER_TENCENT_HY3_PREVIEW.value:
             return TencentHy3PreviewOpenRouterLLM()
+        elif type==SupportedLlms.OPENROUTER_DEEPSEEK_V4_PRO.value:
+            return DeepseekV4ProOpenRouterLLM()
         else:
             raise ValueError(f"No matching LLM implementation found for type: {type}")

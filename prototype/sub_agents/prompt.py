@@ -118,7 +118,7 @@ OUTPUT EXPECTATION:
     if agent_type not in agents:
         raise ValueError(f"Unknown agent: {agent_type}")
 
-    return base.replace("tool_schema",tool_schema) + agents[agent_type]
+    return base.replace("{tool_schema}", tool_schema) + agents[agent_type]
 
 
 def get_agent_user_message(task: str, history: str, state: dict) -> str:
