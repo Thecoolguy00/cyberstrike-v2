@@ -1,105 +1,128 @@
 # executor.py
 """
 Agent execution layer.
-Maps agent names to their LangGraph instances and executes tasks,
-extracting clean result strings for the planners.
+Supports parallel execution of independent tasks using asyncio.gather.
+Tasks with depends_on run only after their upstream tasks complete.
 """
 
 import asyncio
 import json
 from typing import Dict, List
 
-# Agent imports
-from prototype.sub_agents.curl_graph_test_mcp import graph as curl_a
-from prototype.sub_agents.nmap_graph_test_mcp import graph as nmap_a
-from prototype.sub_agents.ferox_graph_test_mcp import graph as ferox_a
+from prototype.sub_agents.curl_graph_test_mcp       import graph as curl_a
+from prototype.sub_agents.nmap_graph_test_mcp       import graph as nmap_a
+from prototype.sub_agents.ferox_graph_test_mcp      import graph as ferox_a
 from prototype.sub_agents.python_req_graph_test_mcp import graph as python_a
-from prototype.sub_agents.xss_graph_test_mcp import graph as xss_a
+from prototype.sub_agents.xss_graph_test_mcp        import graph as xss_a
 from app.utilities import dc_logger
 
 logger = dc_logger.LoggerAdap(dc_logger.get_logger(__name__))
 
 AGENT_MAP = {
-    "nmap_a": nmap_a,
-    "curl_a": curl_a,
-    "ferox_a": ferox_a,
+    "nmap_a":   nmap_a,
+    "curl_a":   curl_a,
+    "ferox_a":  ferox_a,
     "python_a": python_a,
-    "xss_a": xss_a,
+    "xss_a":    xss_a,
 }
 
 
-def extract_agent_message(result: dict) -> str:
-    """Extract message from agent graph result."""
+def _extract_agent_message(result: dict) -> str:
     try:
-        data = result["messages"][-1].content
+        data   = result["messages"][-1].content
         loaded = json.loads(data)
         return loaded.get("message", "No message in response")
     except (KeyError, IndexError, json.JSONDecodeError) as e:
-        logger.warning(f"Warning: Failed to extract message - {e}")
+        logger.warning(f"Failed to extract agent message: {e}")
         return f"Error extracting response: {str(e)}"
 
 
-async def execute_agent_async(agent_graph, task: str) -> str:
-    """Execute agent asynchronously and extract result."""
+async def _run_agent(agent_graph, task: str) -> str:
     try:
         result = await agent_graph.ainvoke({
-            "task": task,
-            "messages": [],
-            "tool_used": []
+            "task":      task,
+            "messages":  [],
+            "tool_used": [],
         })
-        return extract_agent_message(result)
+        return _extract_agent_message(result)
     except Exception as e:
         return f"Agent execution failed: {str(e)}"
 
 
-def execute_agent(agent_name: str, task: str) -> str:
+async def execute_plan_parallel(plan: List[dict], verbose: bool = True) -> List[Dict[str, str]]:
     """
-    Execute agent by name synchronously.
+    Execute a plan respecting task dependencies.
 
-    Args:
-        agent_name: One of 'nmap_a', 'curl_a', 'ferox_a', 'xss_a', 'python_a'
-        task: Task description for the agent
+    Algorithm:
+    1. Build a set of completed task_ids.
+    2. Each iteration: collect all tasks whose depends_on are fully in
+       completed — these are the "ready" layer.
+    3. Run the ready layer concurrently with asyncio.gather.
+    4. Repeat until all tasks are done or a deadlock is detected.
 
-    Returns:
-        Agent's response message
+    Tasks without a task_id (legacy format) are assigned a generated id
+    and treated as having no dependencies so they all run in one parallel batch.
     """
-    if agent_name not in AGENT_MAP:
-        return f"Unknown agent: {agent_name}"
+    # Normalise — assign task_ids to tasks that are missing one (backward compat)
+    normalised = []
+    for i, t in enumerate(plan):
+        task = dict(t)
+        if not task.get("task_id"):
+            task["task_id"] = f"task_{i}"
+        if "depends_on" not in task:
+            task["depends_on"] = []
+        normalised.append(task)
 
-    return asyncio.run(execute_agent_async(AGENT_MAP[agent_name], task))
+    completed: Dict[str, str] = {}   # task_id → result string
+    results:   List[Dict[str, str]] = []
+    remaining  = list(normalised)
+
+    while remaining:
+        ready = [
+            t for t in remaining
+            if all(dep in completed for dep in t.get("depends_on", []))
+        ]
+
+        if not ready:
+            # deadlock — circular deps or missing dep; run first task to unblock
+            logger.warning("[executor] Dependency deadlock — forcing first remaining task")
+            ready = [remaining[0]]
+
+        if verbose:
+            agents = [t["agent"] for t in ready]
+            logger.info(
+                f"[executor] Running {len(ready)} task(s) in parallel: {agents}"
+            )
+
+        async def _run_one(task: dict) -> Dict[str, str]:
+            agent = task["agent"]
+            desc  = task["task_description"]
+            if agent not in AGENT_MAP:
+                result = f"Unknown agent: {agent}"
+            else:
+                if verbose:
+                    logger.info(f"  → [{agent}] {desc[:200]}")
+                result = await _run_agent(AGENT_MAP[agent], desc)
+                if verbose:
+                    logger.info(f"  ← [{agent}] {result[:200]}")
+            return {"agent": agent, "task": desc, "result": result, "_task_id": task["task_id"]}
+
+        batch_results = await asyncio.gather(*[_run_one(t) for t in ready])
+
+        for br in batch_results:
+            task_id = br.pop("_task_id")
+            completed[task_id] = br["result"]
+            results.append(br)
+
+        done_ids = {t["task_id"] for t in ready}
+        remaining = [t for t in remaining if t["task_id"] not in done_ids]
+
+    return results
 
 
 def execute_plan(plan: List[dict], verbose: bool = True) -> List[Dict[str, str]]:
     """
-    Execute all tasks in a plan.
-
-    Args:
-        plan: List of task dicts with 'agent' and 'task_description'
-        verbose: log execution progress
-
-    Returns:
-        List of execution records with agent, task, and result
+    Synchronous entry point — wraps execute_plan_parallel.
+    Called by the LangGraph execute_node which runs in a sync context.
     """
-    executions = []
-
-    for i, task in enumerate(plan, 1):
-        agent = task["agent"]
-        desc = task["task_description"]
-
-        if verbose:
-            task_preview = desc if len(desc) <= 300 else desc[:300] + "..."
-            logger.info(f"[{i}/{len(plan)}] Executing {agent}: {task_preview}")
-
-        response = execute_agent(agent, desc)
-
-        executions.append({
-            "agent": agent,
-            "task": desc,
-            "result": response
-        })
-
-        if verbose:
-            preview = response[:300] + "..." if len(response) > 300 else response
-            logger.info(f"Result preview: {preview}")
-
-    return executions
+    return asyncio.run(execute_plan_parallel(plan, verbose=verbose))
