@@ -1,92 +1,118 @@
-# ⚡ Cyberstrike v2: Automated WAPT Orchestrator
+# Cyberstrike v2: Automated WAPT Orchestrator
 
-**Cyberstrike v2** is a modular, multi-agent Web Application Penetration Testing (WAPT) framework built on the **LangChain / LangGraph** ecosystem. It automates security assessments by replacing rigid, linear pentesting scripts with an intelligent **plan-execute-feedback** orchestration loop.
+Cyberstrike v2 is a modular, multi-agent Web Application Penetration Testing (WAPT) framework built on LangChain and LangGraph. It automates security assessments using an iterative strategic-tactical loop with parallel task execution and active vulnerability nudging.
 
 ---
 
-## Introduction
+## Architecture and Core Loop
 
-Welcome to arv's chaotic space for cyberstrike-v2
+The framework coordinates high-level phase management with low-level tool execution:
 
-This repo is a hobby project of mine, which I've been working for past few month.
+1. **Strategic Planner (`strategic_planner_module.py`)**
+   Decides the current phase (recon, enumeration, vuln_analysis, exploitation, reporting) and sets a high-level phase objective based on target knowledge.
 
-It basically a automated WAPT framework, uses langchain ecosystem and some custom functions
+2. **Vulnerability Advisor (`vuln_advisor.py`)**
+   Analyzes the knowledge graph every cycle to emit a `VulnNudge` (priority: high, medium, skip) to prompt the tactical planner toward high-value, unchecked attack vectors.
 
-It's currently a work in progress so just wait okay?
+3. **Tactical Planner (`tactical_planner_module.py`)**
+   Generates a batch of concrete tasks for available agents, specifying task dependencies (`task_id` and `depends_on`) to allow parallel execution.
 
-## 🏗️ System Architecture
+4. **Parallel Executor (`executor.py`)**
+   Executes tasks in concurrent batches (using `asyncio.gather`) respecting dependencies.
 
-The core architecture operates as an iterative feedback loop where the planner makes decisions based on real-time tool outputs and background task states.
+5. **Knowledge Graph (`schemas.py`)**
+   Deduplicates and merges structured findings (open ports, web services, endpoints, input points, findings, notes) across cycles.
 
-```mermaid
-graph TD
-    UserGoal["🎯 User Objective (e.g. Scan Target)"] --> MasterLoop["⚙️ Master Orchestrator (test.py)"]
-    MasterLoop --> Planner["🧠 Adaptive Planner (plan0.py)"]
-    Planner -->|Generate Sub-Tasks| MasterLoop
-    MasterLoop -->|Dispatch| SubAgents{"🤖 Specialized Sub-Agents"}
-    
-    SubAgents -->|nmap_a| Nmap["🔍 Port/Service Discovery"]
-    SubAgents -->|curl_a| Curl["🌐 HTTP Inspector"]
-    SubAgents -->|ferox_a| Ferox["📂 Directory Bruteforce"]
-    SubAgents -->|python_a| Python["🐍 Custom Python Runner"]
-    SubAgents -->|xss_a| Xss["🛡️ XSS Scanner"]
-    
-    Nmap & Curl & Ferox & Python & Xss -->|Execute Command| MCP["🔌 Combined MCP Server"]
-    MCP -->|Spawn Background Subprocess| BgManager["⏳ Background Task Manager"]
-    
-    BgManager -->|Process Polling & Expiry| MasterLoop
-    BgManager -->|Logs & Output| Feedback["📊 Execution History & Feedback"]
-    Feedback --> Planner
+---
+
+## Execution Flow and Lifecycle
+
+The graph loops between the components as shown in the lifecycle diagram below:
+
+```text
+START
+  │
+  ▼
+strategic          - decides phase + objective, runs ONCE per phase
+  │
+  ▼
+vuln_advisor       - reads knowledge graph, emits nudge (high/medium/skip)
+  │                   runs for ALL phases including recon + enumeration
+  │ (reporting phase -> merge_knowledge directly)
+  ▼
+tactical           - generates BATCH of tasks (parallel-tagged)
+  │                   HIGH nudge = must include at least one nudge task
+  │                   injects nudge as visible banner in prompt
+  │
+  ├─ empty plan ──► merge_knowledge -> strategic  (phase done)
+  │
+  ▼
+execute            - runs ready layer 1 concurrently, then layer 2, etc.
+  │                   nmap + curl run at the same time if no dependency
+  │
+  ▼
+vuln_advisor       - re-reads updated knowledge graph, picks next nudge
+  │                   (previous results now visible -> better decisions)
+  ▼
+tactical           - next cycle with fresh nudge
+  │
+  └── loop ──────────────────────────────────────────────────────┘
 ```
 
----
+### Cycle Examples
 
-## 🔥 Key Features & Capabilities
+**Cycle 1:**
+- **advisor -> nudge:** `robots_check` (high) - "check /robots.txt on port 80"
+- **tactical -> plan:**
+  - `task_id="nmap_quick"`, `depends_on=[]`, `agent=nmap_a`
+  - `task_id="curl_robots"`, `depends_on=[]`, `agent=curl_a` (nudge task)
+  - `task_id="curl_headers"`, `depends_on=[]`, `agent=curl_a`
+- **execute:** `nmap_quick`, `curl_robots`, and `curl_headers` run in parallel.
 
-### 1. Adaptive Iterative Orchestrator (`test.py` & `plan0.py`)
-* **Plan-Execute-Replan Loop:** Instead of relying on predefined scanning templates, Cyberstrike v2 dynamically generates, executes, and revises plans based on actual outcomes.
-* **Dual State Tracking:** The master loop keeps a detailed execution history of `Task ➔ Result` and dynamically feeds it to the planner to avoid task duplication or dead ends.
-* **Structured Output Validation:** Leveraging standard Pydantic schemas (`Task`, `Plan`), LLM outputs are guaranteed to be syntactically valid and reliable.
+**Cycle 2:**
+- **advisor -> nudge:** `git_exposure` (high) - nmap revealed port 80 Apache
+- **tactical -> plan:**
+  - `task_id="nmap_full"`, `depends_on=["nmap_quick"]`, `agent=nmap_a`
+  - `task_id="curl_git"`, `depends_on=[]`, `agent=curl_a` (nudge task)
+  - `task_id="curl_env"`, `depends_on=[]`, `agent=curl_a`
+- **execute:** `curl_git` and `curl_env` run in parallel immediately; `nmap_full` waits for `nmap_quick` to finish.
 
-### 2. Specialized Multi-Agent Swarm (`prototype/sub_agents/`)
-Cyberstrike distributes tasks among specialized sub-agents, each acting as a focused workflow model:
-* **`nmap_a` (Discovery):** Handles network reconnaissance, host discovery, and port scanning. Starts with light sweeps and escalates based on findings.
-* **`curl_a` (HTTP Analysis):** Inspects raw web servers, handles browser headers mimicking real agents to bypass simple bot detection, and maps web endpoints.
-* **`ferox_a` (Directory Bruteforcing):** Performs robust directory/file enumeration using Feroxbuster on confirmed web targets.
-* **`python_a` (Script Runner):** Writes and executes standard Python scripts to parse data, transform payloads, or perform mathematical validations.
-* **`xss_a` (Vulnerability Tester):** Validates and verifies Cross-Site Scripting (XSS) issues specifically target-focused on identified input fields.
-
-### 3. Asynchronous Background Task Manager (`background_tasks.py`)
-To handle long-running WAPT commands (like comprehensive Nmap scans or intensive directory brute-forcing) without blocking the master agent execution:
-* **Session-Isolated Execution:** Spawns asynchronous processes in separate sessions (`start_new_session=True`).
-* **File-Locked Persistence:** Uses low-overhead, file-system-level concurrency locks (`fcntl`) to track background jobs in a central metadata repository (`tasks_metadata.json`).
-* **Active Lifespan Management:** 
-  * Automatically terminates hung or prolonged tasks exceeding their configured `max_runtime` using process group SIGKILL.
-  * Real-time polling (`wait_for_task_completion`) checks process status via quick `os.kill(pid, 0)` signals.
-* **Auto-Cleanup Engine:** Cleans up historical task logs and raw command logs periodically to manage disk space.
-
-### 4. Model Context Protocol (MCP) Server integration
-* Exposes system tools directly to the LangGraph sub-agents using standard MCP interfaces (`curl_mcp_server.py`, `nmap_mcp_server.py`, etc.).
-* Implements robust security command validation blocks (`validators.py`) to prevent destructive shell injections or path traversal outside scoped boundaries.
+A phase finishes when the tactical planner returns an empty plan.
 
 ---
 
-## 📂 Core Directory Structure
+## Directory Structure
 
 ```text
 ├── prototype/
-│   ├── mcp_stuff/                   # Tool scripts & background execution
-│   │   ├── background_tasks.py      # Background CLI process manager
-│   │   ├── combined_mcp_server.py   # Multi-tool MCP endpoint
-│   │   └── validators.py            # Command and path safety validator
+│   ├── mcp_stuff/                   # MCP servers and background process utilities
+│   │   ├── background_tasks.py      # Non-blocking background process manager
+│   │   ├── combined_mcp_server.py   # Aggregated MCP tools endpoint
+│   │   └── validators.py            # Safety checks for commands and paths
 │   │
-│   └── sub_agents/                  # Autonomous sub-agent LangGraph layers
-│       ├── test.py                  # Master Orchestrator loop
-│       ├── plan0.py                 # Pydantic-validated LLM Planner
-│       ├── curl_graph_test_mcp.py   # Web Inspector sub-graph
-│       ├── ferox_graph_test_mcp.py  # Path Bruteforcer sub-graph
-│       ├── nmap_graph_test_mcp.py   # Port Discovery sub-graph
-│       └── xss_graph_test_mcp.py    # XSS Validator sub-graph
+│   └── sub_agents/                  # Core orchestration and sub-agent subgraphs
+│       ├── master_graph.py          # Orchestration state graph
+│       ├── strategic_planner_module.py # High-level phase manager
+│       ├── vuln_advisor.py          # Breadth-first vulnerability advisor
+│       ├── tactical_planner_module.py  # Dependency-aware task generator
+│       ├── executor.py              # Parallel task execution engine
+│       ├── schemas.py               # State and Pydantic schemas
+│       ├── curl_graph_test_mcp.py   # HTTP analysis agent
+│       ├── ferox_graph_test_mcp.py  # Directory/file enumeration agent
+│       ├── nmap_graph_test_mcp.py   # Port/service scanning agent
+│       ├── python_req_graph_test_mcp.py # Script execution agent
+│       └── xss_graph_test_mcp.py    # XSS vulnerability validation agent
 │
-└── app/                             # Shared utilities, services, logging
+└── app/                             # Shared utilities, configuration, and logging
 ```
+
+---
+
+## Getting Started
+
+1. Set up environment variables in a `.env` file (e.g. API keys, base URLs).
+2. Configure models in `app/resources/constants.yaml`.
+3. Run the orchestrator:
+   ```bash
+   python -m prototype.sub_agents.master_graph
+   ```
