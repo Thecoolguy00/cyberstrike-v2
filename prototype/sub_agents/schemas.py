@@ -4,12 +4,16 @@ import operator
 from pydantic import BaseModel, Field
 from langgraph.graph import MessagesState
 
+class BackgroundTaskInfo(TypedDict, total=False):
+    task_id: str
+    tool: str
+    started: bool
+
 class BaseState(MessagesState):
     tool_used: Annotated[List[str], operator.add]
     task: str
     # Background task info (set by mcp_exec_node, consumed by schedule_callback_node)
-    # Structure: {"task_id": str, "tool": str, "started": bool}
-    _bg_task_info: Optional[dict]
+    _bg_task_info: Optional[BackgroundTaskInfo]
 
 # ─── Phase definitions ────────────────────────────────────────────────────────
 

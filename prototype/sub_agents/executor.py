@@ -65,11 +65,11 @@ async def _run_agent(agent_graph, task: str) -> str:
         return f"Agent execution failed: {str(e)}"
 
 
-def _build_callback_task(callback_result: dict) -> str:
+def _build_callback_prompt(callback_result: dict) -> str:
     """
-    Build a task description that includes the background task results
+    Build a task prompt that includes the background task results
     for agent re-invocation. The scheduler stores no session state,
-    so we rebuild a fresh task from the original description + MCP output.
+    so we rebuild a fresh prompt from the original description + MCP output.
     """
     status = callback_result.get("status", {})
     original_task = callback_result.get("original_task_desc", "")
@@ -122,20 +122,20 @@ async def execute_plan_parallel(plan: List[dict], verbose: bool = True) -> List[
             )
 
         if agent_name in AGENT_MAP:
-            # Rebuild task with background results and re-invoke agent
-            callback_task = _build_callback_task(cb)
+            # Rebuild task prompt with background results and re-invoke agent
+            callback_prompt = _build_callback_prompt(cb)
 
             if verbose:
                 logger.info(f"  → [callback:{agent_name}] re-invoking with bg task results")
 
-            result = await _run_agent(AGENT_MAP[agent_name], callback_task)
+            result = await _run_agent(AGENT_MAP[agent_name], callback_prompt)
 
             if verbose:
                 logger.info(f"  ← [callback:{agent_name}] {result[:200]}")
 
             callback_execution_results.append({
                 "agent": agent_name,
-                "task": callback_task,
+                "task": callback_prompt,
                 "result": result,
             })
         else:
