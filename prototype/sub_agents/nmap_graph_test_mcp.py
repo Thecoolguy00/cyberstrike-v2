@@ -7,7 +7,8 @@ from langgraph.graph import StateGraph,START, END, MessagesState
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_core.output_parsers import PydanticOutputParser
 
-from prototype.sub_agents.helper import extract_tool_Schema, format_history, response_route, tool_schema_from_func, mcp_exec_node, tool_router
+from prototype.sub_agents.helper import extract_tool_Schema, format_history, response_route, tool_schema_from_func, mcp_exec_node, tool_router, mcp_result_router
+from prototype.sub_agents.schedule_callback_node import make_schedule_callback_node
 from prototype.sub_agents.true_mcp_exec import get_mcp_tools
 from prototype.sub_agents.search_actions import search_tavily
 from prototype.sub_agents.schema_validator import invoke_and_validate
@@ -32,7 +33,7 @@ nmap_tool_names = [
     "noping_version_scan",
     "script_scan",
     "start_nmap_long_scan",
-    "get_task_output_mcp"
+    # get_task_output_mcp removed — framework handles result retrieval via scheduler
 ]
 nmap_tool_list=[t for t in tool_list if t.name in nmap_tool_names]
 
@@ -67,12 +68,13 @@ async def init_graph():
 
         return await response_route(response)
     
-    #graph, maybe modularise this
+    #graph
     flow=StateGraph(NmapState)
 
     flow.add_node("mcp_exec",mcp_exec_node)
     flow.add_node("nmap_agent",agent_node)
     flow.add_node("tools",ToolNode([search_tavily]))
+    flow.add_node("schedule_callback", make_schedule_callback_node("nmap_a"))
 
     flow.add_edge(START,"nmap_agent")
     flow.add_conditional_edges(
@@ -85,7 +87,19 @@ async def init_graph():
         }
     )
     flow.add_edge("tools","nmap_agent")
-    flow.add_edge("mcp_exec","nmap_agent")
+
+    # mcp_exec routes conditionally: normal result → agent, bg task → schedule_callback
+    flow.add_conditional_edges(
+        "mcp_exec",
+        mcp_result_router,
+        {
+            "agent": "nmap_agent",
+            "schedule_callback": "schedule_callback",
+        }
+    )
+
+    flow.add_edge("schedule_callback", END)  # schedule + exit immediately
+
     graph=flow.compile()
 
     return graph

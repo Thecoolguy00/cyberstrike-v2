@@ -38,7 +38,9 @@ Port format example:
 Background scan:
 - use background scan when the nmap scan will take time, for example full/large port scan
 - use start_nmap_long_scan to run a nmap background scan
-- use get_task_output_mcp to get is output later using the task id
+- after starting a background scan, the framework will automatically
+  schedule a callback and re-invoke you with the results
+- you do NOT need to manually check for results
 
 Don't guess. Don't repeat scans. Escalate only when needed.
 """,
@@ -67,7 +69,9 @@ STRATEGY:
 
 NOTE:
 - start_feroxbuster is a background task
-- use get_task_output_mcp to get is output later using the task id
+- after starting it, the framework will automatically
+  schedule a callback and re-invoke you with the results
+- you do NOT need to manually check for results
 
 Don't repeat scans. Don't guess purposes.
 """,

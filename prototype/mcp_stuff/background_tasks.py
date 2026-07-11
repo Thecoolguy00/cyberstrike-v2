@@ -350,6 +350,122 @@ class BackgroundTaskManager:
                 ],
             }
 
+    # ---------------------- Status & Cancellation (for scheduler) ----------------------
+
+    def get_task_status(self, task_id: str) -> Dict:
+        """
+        Comprehensive status check for a single task.
+        Catches recently-exited processes first, then returns a rich status dict.
+        
+        Returns dict with keys:
+            task_id, status, completed, runtime_seconds,
+            terminated_reason, output, output_truncated
+        """
+        # Catch tasks whose process exited but weren't marked yet
+        self.check_completed_tasks()
+
+        with self._lock:
+            task = None
+            for t in self.tasks:
+                if t["id"] == task_id:
+                    task = t
+                    break
+
+            if task is None:
+                return {
+                    "task_id": task_id,
+                    "status": "not_found",
+                    "completed": False,
+                    "runtime_seconds": 0,
+                    "terminated_reason": None,
+                    "output": "",
+                    "output_truncated": False,
+                }
+
+            runtime = int(time.time() - task["start_time"])
+            completed = task.get("completed", False)
+
+            # Determine status string
+            if not completed:
+                status = "running"
+            elif task.get("terminated") and task.get("terminated_reason") != "completed":
+                status = "terminated"
+            else:
+                status = "completed"
+
+            terminated_reason = task.get("terminated_reason")
+
+            # Read output (full for completed, last 5000 chars for running)
+            output = ""
+            output_truncated = False
+            output_file = task.get("output_file")
+            if output_file:
+                try:
+                    with open(output_file, "r", errors="ignore", encoding="utf-8") as f:
+                        if completed:
+                            output = f.read()
+                        else:
+                            # For running tasks, read last 5000 chars to avoid huge payloads
+                            f.seek(0, 2)  # seek to end
+                            size = f.tell()
+                            max_tail = 5000
+                            if size > max_tail:
+                                f.seek(size - max_tail)
+                                output = f.read()
+                                output_truncated = True
+                            else:
+                                f.seek(0)
+                                output = f.read()
+                except Exception:
+                    output = ""
+
+            return {
+                "task_id": task_id,
+                "status": status,
+                "completed": completed,
+                "runtime_seconds": runtime,
+                "terminated_reason": terminated_reason,
+                "output": output,
+                "output_truncated": output_truncated,
+            }
+
+    def cancel_task(self, task_id: str) -> Dict:
+        """
+        Cancel a running task by ID.
+        Wraps _terminate_task with proper locking, persistence, and clean return.
+        
+        Returns dict with keys: task_id, status, message
+        """
+        with self._lock:
+            task = None
+            for t in self.tasks:
+                if t["id"] == task_id:
+                    task = t
+                    break
+
+            if task is None:
+                return {
+                    "task_id": task_id,
+                    "status": "not_found",
+                    "message": f"No task found with ID: {task_id}",
+                }
+
+            if task.get("completed"):
+                return {
+                    "task_id": task_id,
+                    "status": "already_completed",
+                    "message": f"Task {task_id} already completed (reason: {task.get('terminated_reason', 'unknown')})",
+                }
+
+            self._terminate_task(task, reason="cancelled")
+            self._save_tasks()
+
+            return {
+                "task_id": task_id,
+                "status": "cancelled",
+                "message": f"Task {task_id} cancelled successfully",
+            }
+
     def cleanup_old_tasks(self, max_age_days: int = 7):
         """Remove tasks and their output files older than max_age_days"""
         with self._lock:
@@ -401,6 +517,14 @@ async def wait_for_task(task_id: str, timeout: int, poll_interval: float = 2.0):
     return await bg_manager.wait_for_task_completion(
         task_id, timeout=timeout, poll_interval=poll_interval
     )
+
+
+def check_task_status(task_id: str):
+    return bg_manager.get_task_status(task_id)
+
+
+def cancel_task(task_id: str):
+    return bg_manager.cancel_task(task_id)
 
 
 """

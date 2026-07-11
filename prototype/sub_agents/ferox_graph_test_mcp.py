@@ -7,7 +7,8 @@ from langgraph.graph import StateGraph,START, END, MessagesState
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_core.output_parsers import PydanticOutputParser
 
-from prototype.sub_agents.helper import extract_tool_Schema, format_history, response_route, tool_schema_from_func, mcp_exec_node, tool_router
+from prototype.sub_agents.helper import extract_tool_Schema, format_history, response_route, tool_schema_from_func, mcp_exec_node, tool_router, mcp_result_router
+from prototype.sub_agents.schedule_callback_node import make_schedule_callback_node
 from prototype.sub_agents.true_mcp_exec import get_mcp_tools
 from prototype.sub_agents.search_actions import search_tavily
 from prototype.sub_agents.schema_validator import invoke_and_validate
@@ -26,7 +27,7 @@ tool_list=asyncio.run(get_mcp_tools())
 #these are mcp tool that are not executable with our custom pipline so we use our custom mcp node for it
 ferox_tool_names = [
     "start_feroxbuster",
-    "get_task_output_mcp"
+    # get_task_output_mcp removed — framework handles result retrieval via scheduler
     ]
 ferox_tool_list=[t for t in tool_list if t.name in ferox_tool_names]
 
@@ -67,6 +68,7 @@ async def init_graph():
     flow.add_node("mcp_exec",mcp_exec_node)
     flow.add_node("ferox_agent",agent_node)
     flow.add_node("tools",ToolNode([search_tavily]))
+    flow.add_node("schedule_callback", make_schedule_callback_node("ferox_a"))
 
     flow.add_edge(START,"ferox_agent")
     flow.add_conditional_edges(
@@ -79,7 +81,19 @@ async def init_graph():
         }
     )
     flow.add_edge("tools","ferox_agent")
-    flow.add_edge("mcp_exec","ferox_agent")
+
+    # mcp_exec routes conditionally: normal result → agent, bg task → schedule_callback
+    flow.add_conditional_edges(
+        "mcp_exec",
+        mcp_result_router,
+        {
+            "agent": "ferox_agent",
+            "schedule_callback": "schedule_callback",
+        }
+    )
+
+    flow.add_edge("schedule_callback", END)
+
     graph=flow.compile()
 
     return graph

@@ -192,8 +192,16 @@ from typing import Annotated, List
 class GraphState(MessagesState):
     tool_used:Annotated[List[str],operator.add]
 
+# --- Background task detection ---
+# MCP tools that start background tasks and return {"task_id": ..., "status": "started"}
+BG_TASK_TOOLS = {"start_nmap_long_scan", "start_feroxbuster"}
+
 async def mcp_exec_node(state: GraphState):
-    """A node for executing mcp tool calls"""
+    """A node for executing mcp tool calls.
+    
+    Detects background task responses and sets _bg_task_info in state
+    so the graph can route to schedule_callback instead of back to the agent.
+    """
     # Get last message
     last = state["messages"][-1]
 
@@ -215,8 +223,21 @@ async def mcp_exec_node(state: GraphState):
         args=args
     )
 
-    # Return ONLY ToolMessage
-    return {
+    # Detect background task start
+    bg_task_info = None
+    if tool_used in BG_TASK_TOOLS:
+        try:
+            parsed = json.loads(mcp_result)
+            if parsed.get("status") == "started" and parsed.get("task_id"):
+                bg_task_info = {
+                    "task_id": parsed["task_id"],
+                    "tool": tool_used,
+                    "started": True,
+                }
+        except (json.JSONDecodeError, AttributeError):
+            pass
+
+    result = {
         "messages": [
             ToolMessage(
                 name=tool_used,
@@ -226,6 +247,27 @@ async def mcp_exec_node(state: GraphState):
         ],
         "tool_used": []
     }
+
+    # Set background task info if detected (single object, not multiple flags)
+    if bg_task_info:
+        result["_bg_task_info"] = bg_task_info
+
+    return result
+
+
+def mcp_result_router(state: GraphState):
+    """
+    Routes after mcp_exec_node.
+    If a background task was just started → schedule_callback node.
+    Otherwise → back to agent LLM.
+    
+    Note: The "agent" return value is a logical name. Each graph maps
+    it to its own agent node (e.g., "nmap_agent", "ferox_agent").
+    """
+    bg_info = state.get("_bg_task_info")
+    if bg_info and bg_info.get("started"):
+        return "schedule_callback"
+    return "agent"
 
 
 def tool_router(state: GraphState):

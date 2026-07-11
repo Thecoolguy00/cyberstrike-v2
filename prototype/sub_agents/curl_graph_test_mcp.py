@@ -7,7 +7,8 @@ from langgraph.graph import StateGraph,START, END, MessagesState
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_core.output_parsers import PydanticOutputParser
 
-from prototype.sub_agents.helper import extract_tool_Schema, format_history, response_route, tool_schema_from_func, mcp_exec_node, tool_router
+from prototype.sub_agents.helper import extract_tool_Schema, format_history, response_route, tool_schema_from_func, mcp_exec_node, tool_router, mcp_result_router
+from prototype.sub_agents.schedule_callback_node import make_schedule_callback_node
 from prototype.sub_agents.true_mcp_exec import get_mcp_tools
 from prototype.sub_agents.search_actions import search_tavily
 from prototype.sub_agents.schema_validator import invoke_and_validate
@@ -68,6 +69,7 @@ async def init_graph():
     flow.add_node("mcp_exec",mcp_exec_node)
     flow.add_node("curl_agent",agent_node)
     flow.add_node("tools",ToolNode([search_tavily]))
+    flow.add_node("schedule_callback", make_schedule_callback_node("curl_a"))
 
     flow.add_edge(START,"curl_agent")
     flow.add_conditional_edges(
@@ -80,7 +82,18 @@ async def init_graph():
         }
     )
     flow.add_edge("tools","curl_agent")
-    flow.add_edge("mcp_exec","curl_agent")
+
+    flow.add_conditional_edges(
+        "mcp_exec",
+        mcp_result_router,
+        {
+            "agent": "curl_agent",
+            "schedule_callback": "schedule_callback",
+        }
+    )
+
+    flow.add_edge("schedule_callback", END)
+
     graph=flow.compile()
 
     return graph

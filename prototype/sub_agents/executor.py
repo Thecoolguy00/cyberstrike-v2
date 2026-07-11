@@ -3,6 +3,9 @@
 Agent execution layer.
 Supports parallel execution of independent tasks using asyncio.gather.
 Tasks with depends_on run only after their upstream tasks complete.
+
+Also processes completed background task callbacks from the scheduler
+at the start of each execution cycle.
 """
 
 import asyncio
@@ -44,25 +47,106 @@ async def _run_agent(agent_graph, task: str) -> str:
             "messages":  [],
             "tool_used": [],
         })
-        return _extract_agent_message(result)
+        msg = _extract_agent_message(result)
+
+        # Check if this was a background task scheduling (graph exited via schedule_callback → END)
+        try:
+            parsed = json.loads(msg)
+            if parsed.get("callback_scheduled"):
+                return (
+                    f"Background task {parsed.get('task_id', '?')} started. "
+                    f"Results will be available in ~{parsed.get('check_interval_minutes', '?')} minutes."
+                )
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+        return msg
     except Exception as e:
         return f"Agent execution failed: {str(e)}"
+
+
+def _build_callback_task(callback_result: dict) -> str:
+    """
+    Build a task description that includes the background task results
+    for agent re-invocation. The scheduler stores no session state,
+    so we rebuild a fresh task from the original description + MCP output.
+    """
+    status = callback_result.get("status", {})
+    original_task = callback_result.get("original_task_desc", "")
+
+    return (
+        f"{original_task}\n\n"
+        f"--- BACKGROUND TASK RESULT ---\n"
+        f"Task ID: {callback_result.get('task_id', 'unknown')}\n"
+        f"Status: {status.get('status', 'unknown')}\n"
+        f"Runtime: {status.get('runtime_seconds', '?')}s\n"
+        f"Output:\n{status.get('output', 'No output available')}\n"
+        f"---\n\n"
+        f"Process the above background task results and provide your analysis."
+    )
 
 
 async def execute_plan_parallel(plan: List[dict], verbose: bool = True) -> List[Dict[str, str]]:
     """
     Execute a plan respecting task dependencies.
 
+    Before executing the plan, drains the scheduler's callback result
+    queue and re-invokes agents with completed background task results.
+
     Algorithm:
-    1. Build a set of completed task_ids.
-    2. Each iteration: collect all tasks whose depends_on are fully in
+    1. Process any completed background task callbacks.
+    2. Build a set of completed task_ids.
+    3. Each iteration: collect all tasks whose depends_on are fully in
        completed — these are the "ready" layer.
-    3. Run the ready layer concurrently with asyncio.gather.
-    4. Repeat until all tasks are done or a deadlock is detected.
+    4. Run the ready layer concurrently with asyncio.gather.
+    5. Repeat until all tasks are done or a deadlock is detected.
 
     Tasks without a task_id (legacy format) are assigned a generated id
     and treated as having no dependencies so they all run in one parallel batch.
     """
+    # ── Process completed background task callbacks ──
+    from prototype.sub_agents.task_callback_scheduler import get_scheduler
+
+    scheduler = get_scheduler()
+    callback_results = scheduler.get_completed_results()
+    callback_execution_results = []
+
+    for cb in callback_results:
+        agent_name = cb.get("agent_name", "")
+        task_id = cb.get("task_id", "")
+
+        if verbose:
+            logger.info(
+                f"[executor] Processing background task callback: "
+                f"task={task_id}, agent={agent_name}"
+            )
+
+        if agent_name in AGENT_MAP:
+            # Rebuild task with background results and re-invoke agent
+            callback_task = _build_callback_task(cb)
+
+            if verbose:
+                logger.info(f"  → [callback:{agent_name}] re-invoking with bg task results")
+
+            result = await _run_agent(AGENT_MAP[agent_name], callback_task)
+
+            if verbose:
+                logger.info(f"  ← [callback:{agent_name}] {result[:200]}")
+
+            callback_execution_results.append({
+                "agent": agent_name,
+                "task": callback_task,
+                "result": result,
+            })
+        else:
+            logger.warning(f"[executor] Unknown agent in callback: {agent_name}")
+            callback_execution_results.append({
+                "agent": agent_name,
+                "task": f"bg_callback:{task_id}",
+                "result": f"Unknown agent: {agent_name}",
+            })
+
+    # ── Execute the current plan ──
     # Normalise — assign task_ids to tasks that are missing one (backward compat)
     normalised = []
     for i, t in enumerate(plan):
@@ -117,7 +201,7 @@ async def execute_plan_parallel(plan: List[dict], verbose: bool = True) -> List[
         done_ids = {t["task_id"] for t in ready}
         remaining = [t for t in remaining if t["task_id"] not in done_ids]
 
-    return results
+    return callback_execution_results + results
 
 
 def execute_plan(plan: List[dict], verbose: bool = True) -> List[Dict[str, str]]:

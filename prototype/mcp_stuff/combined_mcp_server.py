@@ -183,7 +183,7 @@ def xsstrike_basic_scan(target:str)->str:
 
 
 #long running tasks specific function
-from prototype.mcp_stuff.background_tasks import launch_background_task, get_background_task_status, get_task_by_id, get_task_output
+from prototype.mcp_stuff.background_tasks import launch_background_task, get_background_task_status, get_task_by_id, get_task_output, check_task_status, cancel_task
 
 @mcp.tool()
 def start_nmap_long_scan(
@@ -274,6 +274,35 @@ def get_all_bg_task_status() -> Dict:
     """
 
     return get_background_task_status()
+
+
+#background task status check and cancellation (used by scheduler, not LLM)
+@mcp.tool()
+def check_mcp_task_status(task_id: str) -> Dict:
+    """Check comprehensive status of a background task by ID.
+    Returns status, runtime, completion state, and output (partial if still running).
+
+    Args:
+        task_id (str): The ID of the background task to check.
+
+    Returns:
+        Dict: Status dict with task_id, status, completed, runtime_seconds,
+              terminated_reason, output, output_truncated.
+    """
+    return check_task_status(task_id)
+
+@mcp.tool()
+def cancel_mcp_task(task_id: str) -> Dict:
+    """Cancel a running background task by ID.
+    Terminates the process and returns cancellation status.
+
+    Args:
+        task_id (str): The ID of the background task to cancel.
+
+    Returns:
+        Dict: Status dict with task_id, status, message.
+    """
+    return cancel_task(task_id)
 
 
 #python execution

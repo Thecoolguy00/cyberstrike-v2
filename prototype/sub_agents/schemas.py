@@ -7,6 +7,9 @@ from langgraph.graph import MessagesState
 class BaseState(MessagesState):
     tool_used: Annotated[List[str], operator.add]
     task: str
+    # Background task info (set by mcp_exec_node, consumed by schedule_callback_node)
+    # Structure: {"task_id": str, "tool": str, "started": bool}
+    _bg_task_info: Optional[dict]
 
 # ─── Phase definitions ────────────────────────────────────────────────────────
 
