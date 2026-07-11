@@ -2,6 +2,7 @@ from langchain_community.document_loaders import WikipediaLoader
 from tavily import TavilyClient
 from dotenv import load_dotenv
 import os
+import asyncio
 
 load_dotenv()
 api_key=os.getenv("TAVILY_API_KEY")

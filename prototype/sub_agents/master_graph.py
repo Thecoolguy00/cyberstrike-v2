@@ -229,5 +229,5 @@ def run_pentest(query: str, max_global_iterations: int = 200, verbose: bool = Tr
 
 if __name__ == "__main__":
     print("starting test-1")
-    result = run_pentest(query="this is the ip: 10.48.160.227, focus on xss, skip others")
+    result = run_pentest(query="this is the ip: 10.48.175.152, focus on xss")
     print("result:", result)

@@ -3,6 +3,19 @@
 Tactical planner — generates batched, dependency-tagged tasks for the
 current phase. Reads the VulnNudge from the advisor and folds it into
 its planning prompt every cycle.
+
+Key addition vs previous version:
+  Each phase now receives a PHASE PLAYBOOK — a concrete SOP injected
+  into the system prompt that tells the LLM exactly what the execution
+  order is, what prerequisites are required before escalating, and what
+  is explicitly forbidden. This eliminates the "curl before nmap" class
+  of bugs where the planner guesses at sequencing instead of following
+  a defined procedure.
+
+  A matching ADVISOR GUARDRAIL block is injected into vuln_advisor.py
+  (see ADVISOR_PHASE_GUARDRAILS at the bottom of this file — imported
+  by vuln_advisor to keep guardrails co-located with the playbooks they
+  mirror).
 """
 
 import asyncio
@@ -31,6 +44,175 @@ tactical_llm    = LLMHelper.get_llm_for_service("tactical_planner")
 tactical_parser = PydanticOutputParser(pydantic_object=TacticalPlan)
 
 
+# ─── Phase playbooks ──────────────────────────────────────────────────────────
+# Each playbook is the full SOP for ONE phase.
+# Injected verbatim into the system prompt so the LLM has unambiguous
+# step-ordering, prerequisites, and forbidden actions.
+
+RECON_PLAYBOOK = """
+RECON PLAYBOOK
+
+OBJECTIVE
+Discover reachable services and identify web applications.
+
+PREREQUISITES
+None.
+
+WORKFLOW
+
+1. Reachability & Port Discovery
+   - Start with nmap.
+   - Confirm open ports.
+   - Escalate to full scan only if needed.
+
+2. Service Identification
+   - Identify services only on confirmed open ports.
+
+3. HTTP Identification
+   - Use curl ONLY on ports confirmed as HTTP/HTTPS.
+
+4. HTTP Fingerprinting
+   - Fetch root page.
+   - Inspect headers.
+   - Check robots.txt and sitemap.xml.
+
+RULES
+✓ Knowledge graph is the source of truth.
+✓ Batch independent work.
+✓ Respect dependencies.
+
+FORBIDDEN
+✗ Guess HTTP ports.
+✗ Curl unknown ports.
+✗ Vulnerability probing.
+
+COMPLETE WHEN
+All reachable services are identified and all web services fingerprinted.
+"""
+
+ENUMERATION_PLAYBOOK = """
+ENUMERATION PLAYBOOK
+
+OBJECTIVE
+Discover endpoints, parameters and exposed resources.
+
+PREREQUISITES
+knowledge.web_services must contain confirmed web services.
+
+WORKFLOW
+
+1. Easy exposure checks
+   - .git
+   - .env
+   - Swagger/OpenAPI
+   - Backup/config files
+
+2. Directory enumeration
+   - Run ferox on confirmed web services.
+
+3. Endpoint inspection
+   - Fetch interesting paths.
+   - Record forms and parameters.
+
+4. Parameter discovery
+   - Identify additional inputs where appropriate.
+
+RULES
+✓ Work only on confirmed web services.
+✓ Batch independent checks.
+
+FORBIDDEN
+✗ XSS testing.
+✗ Exploitation.
+✗ New recon scans.
+
+COMPLETE WHEN
+Endpoints and input points are fully mapped.
+"""
+
+VULN_ANALYSIS_PLAYBOOK = """
+VULNERABILITY ANALYSIS PLAYBOOK
+
+OBJECTIVE
+Identify vulnerabilities on the known attack surface.
+
+PREREQUISITES
+Known endpoints or input points.
+
+WORKFLOW
+
+1. Prioritize the user-requested vulnerability.
+2. Probe known input points.
+3. Test endpoint-based issues.
+4. Perform protocol/header checks if still required.
+
+RULES
+✓ Only test assets in the knowledge graph.
+✓ Record every positive signal.
+✓ Mark findings confirmed=False until exploitation.
+
+FORBIDDEN
+✗ Exploitation.
+✗ Enumeration.
+✗ New reconnaissance.
+
+COMPLETE WHEN
+All known attack surface has been tested.
+"""
+
+EXPLOITATION_PLAYBOOK = """
+━━━ EXPLOITATION PLAYBOOK ━━━━━━━━━━━━
+
+OBJECTIVE
+Confirm findings and demonstrate impact.
+
+PREREQUISITES
+knowledge.findings contains potential findings.
+
+WORKFLOW
+
+1. Confirm unconfirmed findings.
+2. Chain related findings where appropriate.
+3. Demonstrate realistic impact.
+4. Collect evidence.
+
+RULES
+✓ Update confirmed findings.
+✓ Record supporting evidence.
+
+FORBIDDEN
+✗ Destructive actions.
+✗ New discovery.
+✗ New enumeration.
+
+COMPLETE WHEN
+Every finding has been confirmed or ruled out.
+"""
+
+REPORTING_PLAYBOOK = """
+REPORTING PLAYBOOK
+
+OBJECTIVE
+No agent execution.
+
+ACTION
+Return:
+- plan=[]
+- phase_summary
+- extracted_knowledge
+
+The strategic planner will generate the final report.
+"""
+
+TACTICAL_PHASE_PLAYBOOKS: Dict[str, str] = {
+    "recon":         RECON_PLAYBOOK,
+    "enumeration":   ENUMERATION_PLAYBOOK,
+    "vuln_analysis": VULN_ANALYSIS_PLAYBOOK,
+    "exploitation":  EXPLOITATION_PLAYBOOK,
+    "reporting":     REPORTING_PLAYBOOK,
+}
+
+
 # ─── Nudge block injected into system prompt ──────────────────────────────────
 
 def _nudge_block(nudge: Optional[VulnNudge], allowed_agents: List[str]) -> str:
@@ -52,7 +234,7 @@ def _nudge_block(nudge: Optional[VulnNudge], allowed_agents: List[str]) -> str:
     )
 
     return f"""
-━━━ ADVISOR NUDGE ({nudge.priority.upper()}) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ADVISOR NUDGE ({nudge.priority.upper()})
   {urgency}
   Vulnerability:    {nudge.label} [{nudge.vuln_id}]
   Why now:          {nudge.rationale}
@@ -66,7 +248,6 @@ def _nudge_block(nudge: Optional[VulnNudge], allowed_agents: List[str]) -> str:
   - If priority=medium: include it if it fits naturally; skip if plan is already full.
   - When you return an EMPTY plan (focus exhausted), set phase_summary and the
     graph will automatically mark "{nudge.vuln_id}" as checked.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
 
@@ -79,44 +260,41 @@ def get_tactical_system_prompt(
 ) -> str:
     allowed_agents = PHASE_AGENT_MAP.get(phase, [])
     agent_descriptions = {
-        "nmap_a":  "nmap_a  — Port/service discovery (start light, escalate if needed)",
-        "curl_a":  "curl_a  — HTTP inspection (headers, pages, endpoints, custom requests)",
-        "ferox_a": "ferox_a — Directory/file enumeration (confirmed web services only)",
-        "python_a":"python_a — Write and execute custom Python scripts",
-        "xss_a":   "xss_a   — XSS payload injection and detection",
+        "nmap_a":   "nmap_a   — Port/service discovery (start light, escalate if needed)",
+        "curl_a":   "curl_a   — HTTP inspection (headers, pages, endpoints, custom requests)",
+        "ferox_a":  "ferox_a  — Directory/file enumeration (confirmed web services only)",
+        "python_a": "python_a — Write and execute custom Python scripts",
+        "xss_a":    "xss_a    — XSS payload injection and detection",
     }
     agent_lines = "\n".join(
         f"- {agent_descriptions[a]}" for a in allowed_agents if a in agent_descriptions
     ) or "- No agents available. Return empty plan + phase_summary immediately."
 
+    playbook     = TACTICAL_PHASE_PLAYBOOKS.get(phase, "")
     nudge_section = _nudge_block(nudge, allowed_agents)
 
     return f"""You are a tactical task planner for ONE phase of a web pentest.
 
 CURRENT PHASE: {phase}
-PHASE OBJECTIVE (set by strategic planner — overall scope for this phase):
+PHASE OBJECTIVE (set by strategic planner):
 {phase_objective}
 
 AGENTS AVAILABLE THIS PHASE:
 {agent_lines}
+
+{playbook}
 {nudge_section}
 BATCH PLANNING MODEL:
-- Generate ALL tasks you can identify for this cycle in ONE response
+- Generate ALL tasks for this cycle in ONE response
 - Tag truly independent tasks with empty depends_on — they run in PARALLEL
-- Use depends_on: ["task_id"] only for real ordering constraints
+- Use depends_on: ["task_id"] only for REAL ordering constraints defined in the playbook above
 - Every task MUST have a unique task_id (short slug, no spaces)
-- More tasks per cycle = fewer total cycles = faster execution
+- The playbook's DEPENDENCY TEMPLATE shows the correct ordering — follow it
 
-Example batch (recon):
-  task_id="nmap_quick",   depends_on=[],             agent=nmap_a
-  task_id="curl_root",    depends_on=[],             agent=curl_a
-  task_id="curl_headers", depends_on=["curl_root"],  agent=curl_a  ← waits for root
-
-PLANNING RULES:
-0. Start with less intrusive techniques, escalate only if needed
-1. Address HIGH priority advisor nudges first (include at least one nudge task)
-2. Only plan tasks executable NOW with current knowledge
-3. ONLY use agents from the allowed list — others are dropped silently
+UNIVERSAL RULES:
+1. Follow the phase playbook's EXECUTION ORDER strictly
+2. Never run a step before its prerequisites are satisfied
+3. ONLY use agents from the allowed list — others are silently dropped
 4. Note out-of-scope observations in extracted_knowledge.notes (don't pursue them)
 5. When phase objective is fully satisfied OR no useful tasks remain:
    - Return EMPTY "plan"
@@ -158,11 +336,19 @@ def get_tactical_user_prompt(
 
     knowledge = state.get("knowledge", void_knowledge())
 
+    # Surface a quick prerequisite summary so the LLM doesn't have to
+    # re-derive it from the full knowledge graph on every cycle.
+    phase = state.get("current_phase", "")
+    prereq_summary = _build_prereq_summary(phase, knowledge)
+
     return f"""ORIGINAL OBJECTIVE:
 {state['query']}
 
 PHASE OBJECTIVE:
 {state['phase_objective']}
+
+PREREQUISITE STATUS (derived from knowledge graph):
+{prereq_summary}
 
 CURRENT KNOWLEDGE GRAPH:
 {json.dumps(knowledge, indent=2)}
@@ -173,12 +359,55 @@ EXECUTION HISTORY FOR THIS PHASE:
 MCP BACKGROUND TASKS STATUS:
 {status_str}
 
-What is the FULL batch of tasks for this cycle?
-- Include ALL independent work (they run in parallel — no cost to batching)
-- If advisor nudge is HIGH priority, include at least one nudge task
+Refer to the PHASE PLAYBOOK in your instructions for the correct execution
+order and prerequisites. Then output the FULL batch of tasks for this cycle:
+- Tasks that are truly independent go in the same batch with empty depends_on
+- Tasks that must wait for others use depends_on referencing the earlier task_id
+- If a prerequisite step is not yet complete, plan only up to that step
 - If phase is complete: empty plan + phase_summary + extracted_knowledge
-- Do NOT repeat tasks that already succeeded above
+- Do NOT repeat tasks that already succeeded in the execution history above
 """
+
+
+def _build_prereq_summary(phase: str, knowledge: dict) -> str:
+    """
+    Quick prerequisite check surfaced verbatim into the user prompt.
+    Helps the LLM validate gating conditions without reading the full KG.
+    """
+    open_ports   = knowledge.get("open_ports",   []) or []
+    web_services = knowledge.get("web_services", []) or []
+    endpoints    = knowledge.get("endpoints",    []) or []
+    input_points = knowledge.get("input_points", []) or []
+    findings     = knowledge.get("findings",     []) or []
+
+    http_ports = [
+        p for p in open_ports
+        if any(kw in str(p.get("service", "")).lower()
+               for kw in ("http", "https", "web", "ssl"))
+    ]
+
+    lines = [
+        f"  open_ports:      {len(open_ports)} known  "
+        f"({'includes HTTP/HTTPS' if http_ports else 'no HTTP ports confirmed yet'})",
+        f"  web_services:    {len(web_services)} confirmed URL(s)",
+        f"  endpoints:       {len(endpoints)} discovered",
+        f"  input_points:    {len(input_points)} known",
+        f"  findings:        {len(findings)} recorded",
+    ]
+
+    # Phase-specific gate warnings
+    if phase == "recon" and not open_ports:
+        lines.append("  ⚠ GATE: No ports known yet — start with nmap, not curl.")
+    if phase == "recon" and open_ports and not http_ports:
+        lines.append("  ⚠ GATE: No HTTP ports confirmed — do NOT run curl until nmap finds one.")
+    if phase == "enumeration" and not web_services:
+        lines.append("  ⚠ GATE: No web services — skip phase (return empty plan).")
+    if phase == "vuln_analysis" and not input_points and not endpoints:
+        lines.append("  ⚠ GATE: No input_points or endpoints — limited probing possible.")
+    if phase == "exploitation" and not findings:
+        lines.append("  ⚠ GATE: No findings to confirm — skip phase (return empty plan).")
+
+    return "\n".join(lines)
 
 
 # ─── History slicer ───────────────────────────────────────────────────────────
@@ -198,9 +427,10 @@ def tactical_planner(state: MasterState) -> dict:
     """
     Generate a batch of tasks for this cycle.
 
-    Key behaviours added vs previous version:
-    - Reads VulnNudge from state and injects it into the system prompt
-    - Prompts for batch + parallel task generation (task_id, depends_on)
+    Key behaviours:
+    - Injects phase-specific playbook (SOP with execution order + forbidden actions)
+    - Injects prerequisite summary so the LLM sees gate status explicitly
+    - Reads VulnNudge from state and folds it into the system prompt
     - When returning an empty plan (focus/phase done), adds the current
       nudge's vuln_id to checked_vulns so the advisor never re-suggests it
     """
@@ -238,7 +468,6 @@ def tactical_planner(state: MasterState) -> dict:
             "_phase_summary":        parsed.phase_summary,
             "_extracted_knowledge":  parsed.extracted_knowledge,
             "thinking":              parsed.thinking,
-            # append to checked_vulns via the reducer in MasterState
             "checked_vulns":         newly_checked,
         }
 

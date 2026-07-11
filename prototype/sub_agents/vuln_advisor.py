@@ -63,12 +63,11 @@ OUTPUT PRIORITY LEVELS:
   "skip"   — nothing new is visible right now. Tactical planner follows its
               own flow without advisor interference.
 
-────────────────────────────────────────────────────────────────────────────
 PHASE-AWARE NUDGE MENU
 (Use only what makes sense for the current phase — don't suggest vuln_analysis
 techniques during recon if the knowledge graph has nothing to probe them on)
 
-── RECON PHASE ──────────────────────────────────────────────────────────────
+RECON PHASE
 Fast surface checks that nmap/curl often miss:
   robots_check       : GET /robots.txt — reveals hidden paths, disallowed dirs
   sitemap_check      : GET /sitemap.xml — reveals all routes
@@ -78,7 +77,7 @@ Fast surface checks that nmap/curl often miss:
   cookie_flags       : Set-Cookie missing HttpOnly/Secure/SameSite
   cors_check         : Reflect Origin: evil.com, check ACAO header
 
-── ENUMERATION PHASE ────────────────────────────────────────────────────────
+ENUMERATION PHASE
 Easy wins alongside directory brute-force:
   git_exposure       : GET /.git/HEAD — source code leak
   env_exposure       : GET /.env, /.env.local, /config.php
@@ -88,7 +87,7 @@ Easy wins alongside directory brute-force:
   swagger_exposure   : /api/swagger.json, /openapi.json, /swagger-ui
   directory_listing  : Known paths returning "Index of"
 
-── VULN_ANALYSIS PHASE ──────────────────────────────────────────────────────
+VULN_ANALYSIS PHASE
 INPUT-BASED (require input_points):
   reflected_xss      : GET param reflected in HTML without encoding
   html_injection     : HTML tags rendered — same targets as rxss, less filtered
@@ -106,12 +105,11 @@ ENDPOINT/FILE-BASED (require endpoints):
   backup_files       : .bak/.old/.swp/~ on known filenames
   source_disclosure  : .php~/.php.bak source code exposed
 
-── EXPLOITATION PHASE ───────────────────────────────────────────────────────
+EXPLOITATION PHASE
   confirm_xss        : Confirm unconfirmed XSS findings with full PoC
   confirm_redirect   : Confirm open_redirect findings
   chain_vulns        : Chain findings (e.g. info_disclosure → auth bypass)
 
-────────────────────────────────────────────────────────────────────────────
 DECISION RULES:
 1. Read the knowledge graph: open_ports, web_services, endpoints,
    input_points, findings, notes — what EXISTS right now?
