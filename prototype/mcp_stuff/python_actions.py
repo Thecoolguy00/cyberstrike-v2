@@ -1,3 +1,4 @@
+import os
 import subprocess
 import tempfile
 import textwrap
@@ -31,3 +32,8 @@ def execute_python(code: str, timeout=15):
             "stdout": "",
             "stderr": "Execution timed out"
         }
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass

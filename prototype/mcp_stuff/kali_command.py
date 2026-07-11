@@ -45,8 +45,9 @@ class CommandRunner:
         out = proc.stdout or ""
         err = proc.stderr or ""
         return out + err
-
-    def port_args(self, ports: Optional[Sequence[str]]) -> List[str]:
+        
+    @staticmethod
+    def port_args(ports: Optional[Sequence[str]]) -> List[str]:
         """
         Formats ports into CLI syntax
         Adds -p
