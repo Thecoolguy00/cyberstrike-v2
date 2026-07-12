@@ -44,164 +44,119 @@ tactical_llm    = LLMHelper.get_llm_for_service("tactical_planner")
 tactical_parser = PydanticOutputParser(pydantic_object=TacticalPlan)
 
 
-# ─── Phase playbooks ──────────────────────────────────────────────────────────
-# Each playbook is the full SOP for ONE phase.
-# Injected verbatim into the system prompt so the LLM has unambiguous
-# step-ordering, prerequisites, and forbidden actions.
+# ─── Global rules + phase playbooks ─────────────────────────────────────────
+# GLOBAL_RULES is injected into every phase prompt — keeps individual
+# playbooks short and ensures consistent discipline across all phases.
+# Each playbook covers ONE phase with a compact, state-based SOP.
+
+GLOBAL_RULES = """
+GLOBAL RULES
+- The knowledge graph is the source of truth.
+- Only interact with assets confirmed in the knowledge graph.
+- Never repeat work already in the execution history.
+- Only plan tasks that are executable right now.
+- Batch independent tasks (empty depends_on = parallel).
+- Return an empty plan when the phase objective is complete.
+"""
 
 RECON_PLAYBOOK = """
-RECON PLAYBOOK
+RECON
 
-OBJECTIVE
-Discover reachable services and identify web applications.
+Objective
+Discover reachable services.
 
-PREREQUISITES
-None.
+State
 
-WORKFLOW
+IF knowledge.open_ports is empty
+→ Discover ports.
 
-1. Reachability & Port Discovery
-   - Start with nmap.
-   - Confirm open ports.
-   - Escalate to full scan only if needed.
+IF confirmed HTTP services exist but are not fingerprinted
+→ Fingerprint them.
 
-2. Service Identification
-   - Identify services only on confirmed open ports.
+IF no HTTP services exist
+→ Finish phase.
 
-3. HTTP Identification
-   - Use curl ONLY on ports confirmed as HTTP/HTTPS.
-
-4. HTTP Fingerprinting
-   - Fetch root page.
-   - Inspect headers.
-   - Check robots.txt and sitemap.xml.
-
-RULES
-✓ Knowledge graph is the source of truth.
-✓ Batch independent work.
-✓ Respect dependencies.
-
-FORBIDDEN
-✗ Guess HTTP ports.
-✗ Curl unknown ports.
-✗ Vulnerability probing.
-
-COMPLETE WHEN
-All reachable services are identified and all web services fingerprinted.
+Forbidden
+- Interact only with confirmed ports and services.
+- No enumeration.
+- No vulnerability testing.
 """
 
 ENUMERATION_PLAYBOOK = """
-ENUMERATION PLAYBOOK
+ENUMERATION
 
-OBJECTIVE
-Discover endpoints, parameters and exposed resources.
+Objective
+Map web attack surface.
 
-PREREQUISITES
-knowledge.web_services must contain confirmed web services.
+State
 
-WORKFLOW
+IF knowledge.web_services is empty
+→ Finish phase.
 
-1. Easy exposure checks
-   - .git
-   - .env
-   - Swagger/OpenAPI
-   - Backup/config files
+IF endpoints are incomplete
+→ Enumerate endpoints.
 
-2. Directory enumeration
-   - Run ferox on confirmed web services.
+IF input_points are incomplete
+→ Inspect endpoints for parameters and forms.
 
-3. Endpoint inspection
-   - Fetch interesting paths.
-   - Record forms and parameters.
+IF attack surface is mapped
+→ Finish phase.
 
-4. Parameter discovery
-   - Identify additional inputs where appropriate.
-
-RULES
-✓ Work only on confirmed web services.
-✓ Batch independent checks.
-
-FORBIDDEN
-✗ XSS testing.
-✗ Exploitation.
-✗ New recon scans.
-
-COMPLETE WHEN
-Endpoints and input points are fully mapped.
+Forbidden
+- No vulnerability testing.
+- No new reconnaissance.
 """
 
 VULN_ANALYSIS_PLAYBOOK = """
-VULNERABILITY ANALYSIS PLAYBOOK
+VULNERABILITY ANALYSIS
 
-OBJECTIVE
-Identify vulnerabilities on the known attack surface.
+Objective
+Identify vulnerabilities.
 
-PREREQUISITES
-Known endpoints or input points.
+Priority
 
-WORKFLOW
+1. User-requested vulnerability type (check original query).
+2. Input-based testing (XSS, SQLi, HTMLi, open redirect, IDOR).
+3. Endpoint-based testing (backup files, source disclosure, directory listing).
+4. Configuration checks (CORS, clickjacking, cookie flags, secret leaks).
 
-1. Prioritize the user-requested vulnerability.
-2. Probe known input points.
-3. Test endpoint-based issues.
-4. Perform protocol/header checks if still required.
-
-RULES
-✓ Only test assets in the knowledge graph.
-✓ Record every positive signal.
-✓ Mark findings confirmed=False until exploitation.
-
-FORBIDDEN
-✗ Exploitation.
-✗ Enumeration.
-✗ New reconnaissance.
-
-COMPLETE WHEN
-All known attack surface has been tested.
+Forbidden
+- No exploitation.
+- No new enumeration.
+- No reconnaissance.
 """
 
 EXPLOITATION_PLAYBOOK = """
-━━━ EXPLOITATION PLAYBOOK ━━━━━━━━━━━━
+EXPLOITATION
 
-OBJECTIVE
-Confirm findings and demonstrate impact.
+Objective
+Confirm findings.
 
-PREREQUISITES
-knowledge.findings contains potential findings.
+State
 
-WORKFLOW
+IF no findings
+→ Finish phase.
 
-1. Confirm unconfirmed findings.
-2. Chain related findings where appropriate.
-3. Demonstrate realistic impact.
-4. Collect evidence.
+IF findings remain unconfirmed
+→ Confirm them with proof-of-concept.
 
-RULES
-✓ Update confirmed findings.
-✓ Record supporting evidence.
+IF multiple findings relate (same endpoint, session, user)
+→ Attempt chaining.
 
-FORBIDDEN
-✗ Destructive actions.
-✗ New discovery.
-✗ New enumeration.
-
-COMPLETE WHEN
-Every finding has been confirmed or ruled out.
+Forbidden
+- No destructive actions.
+- No new discovery.
 """
 
 REPORTING_PLAYBOOK = """
-REPORTING PLAYBOOK
+REPORTING
 
-OBJECTIVE
 No agent execution.
 
-ACTION
 Return:
-- plan=[]
-- phase_summary
-- extracted_knowledge
-
-The strategic planner will generate the final report.
+- empty plan
+- phase summary
+- extracted knowledge
 """
 
 TACTICAL_PHASE_PLAYBOOKS: Dict[str, str] = {
@@ -260,17 +215,17 @@ def get_tactical_system_prompt(
 ) -> str:
     allowed_agents = PHASE_AGENT_MAP.get(phase, [])
     agent_descriptions = {
-        "nmap_a":   "nmap_a   — Port/service discovery (start light, escalate if needed)",
-        "curl_a":   "curl_a   — HTTP inspection (headers, pages, endpoints, custom requests)",
-        "ferox_a":  "ferox_a  — Directory/file enumeration (confirmed web services only)",
-        "python_a": "python_a — Write and execute custom Python scripts",
+        "nmap_a":   "nmap_a   — Network port and service discovery",
+        "curl_a":   "curl_a   — HTTP inspection: headers, pages, endpoints, custom requests",
+        "ferox_a":  "ferox_a  — Directory and file enumeration on confirmed web services",
+        "python_a": "python_a — Write and execute custom Python scripts for any task",
         "xss_a":    "xss_a    — XSS payload injection and detection",
     }
     agent_lines = "\n".join(
         f"- {agent_descriptions[a]}" for a in allowed_agents if a in agent_descriptions
     ) or "- No agents available. Return empty plan + phase_summary immediately."
 
-    playbook     = TACTICAL_PHASE_PLAYBOOKS.get(phase, "")
+    playbook      = TACTICAL_PHASE_PLAYBOOKS.get(phase, "")
     nudge_section = _nudge_block(nudge, allowed_agents)
 
     return f"""You are a tactical task planner for ONE phase of a web pentest.
@@ -282,25 +237,11 @@ PHASE OBJECTIVE (set by strategic planner):
 AGENTS AVAILABLE THIS PHASE:
 {agent_lines}
 
+{GLOBAL_RULES}
 {playbook}
 {nudge_section}
-BATCH PLANNING MODEL:
-- Generate ALL tasks for this cycle in ONE response
-- Tag truly independent tasks with empty depends_on — they run in PARALLEL
-- Use depends_on: ["task_id"] only for REAL ordering constraints defined in the playbook above
-- Every task MUST have a unique task_id (short slug, no spaces)
-- The playbook's DEPENDENCY TEMPLATE shows the correct ordering — follow it
-
-UNIVERSAL RULES:
-1. Follow the phase playbook's EXECUTION ORDER strictly
-2. Never run a step before its prerequisites are satisfied
-3. ONLY use agents from the allowed list — others are silently dropped
-4. Note out-of-scope observations in extracted_knowledge.notes (don't pursue them)
-5. When phase objective is fully satisfied OR no useful tasks remain:
-   - Return EMPTY "plan"
-   - Set "phase_summary" summarising what was found
-   - Populate "extracted_knowledge" fully
-6. ALWAYS populate extracted_knowledge every cycle — even mid-phase
+Note out-of-scope observations in extracted_knowledge.notes (don't pursue them).
+ALWAYS populate extracted_knowledge every cycle — even mid-phase.
 
 OUTPUT FORMAT:
 """ + tactical_parser.get_format_instructions()
