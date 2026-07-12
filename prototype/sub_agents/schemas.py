@@ -196,6 +196,7 @@ class MasterState(TypedDict, total=False):
     current_phase:         str
     phase_objective:       str
     phase_iteration_count: int
+    post_execution:        bool
 
     # knowledge
     knowledge: TargetKnowledge

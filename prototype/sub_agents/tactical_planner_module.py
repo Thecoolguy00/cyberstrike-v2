@@ -35,6 +35,7 @@ from prototype.sub_agents.schemas import (
     PHASE_AGENT_MAP,
     void_knowledge,
     VulnNudge,
+    merge_knowledge,
 )
 
 logger = dc_logger.LoggerAdap(dc_logger.get_logger(__name__))
@@ -275,7 +276,13 @@ def get_tactical_user_prompt(
             )
         history_str = "\n\n".join(items)
 
-    knowledge = state.get("knowledge", void_knowledge())
+    # Merge live cycle-level discoveries into the committed knowledge base
+    # so tactical sees its own previous output within a phase, not just
+    # what was committed at the last phase boundary.
+    knowledge = merge_knowledge(
+        state.get("knowledge", void_knowledge()),
+        state.get("_extracted_knowledge", void_knowledge()),
+    )
 
     # Surface a quick prerequisite summary so the LLM doesn't have to
     # re-derive it from the full knowledge graph on every cycle.
@@ -402,12 +409,20 @@ def tactical_planner(state: MasterState) -> dict:
             newly_checked = [nudge.vuln_id]
             logger.info(f"[tactical] Marking '{nudge.vuln_id}' as checked")
 
+        # Accumulate this cycle's extraction into the running _extracted_knowledge
+        # so knowledge builds up across cycles within a phase rather than being
+        # reset each time tactical runs.
+        accumulated = merge_knowledge(
+            state.get("_extracted_knowledge", void_knowledge()),
+            parsed.extracted_knowledge,
+        )
+
         return {
             **state,
             "plan":                  validated_plan,
             "phase_iteration_count": state.get("phase_iteration_count", 0) + 1,
             "_phase_summary":        parsed.phase_summary,
-            "_extracted_knowledge":  parsed.extracted_knowledge,
+            "_extracted_knowledge":  accumulated,
             "thinking":              parsed.thinking,
             "checked_vulns":         newly_checked,
         }

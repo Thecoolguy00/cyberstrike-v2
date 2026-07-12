@@ -60,6 +60,7 @@ def execute_node(state: MasterState) -> dict:
         **state,
         "execution_history": state.get("execution_history", []) + executions,
         "plan": [],
+        "post_execution": True,
     }
 
 
@@ -95,8 +96,9 @@ def merge_knowledge_node(state: MasterState) -> dict:
         "knowledge":            merged,
         "phase_history":        phase_history + [record],
         "_phase_summary":       "",
-        "_extracted_knowledge": void_knowledge(),
+        "_extracted_knowledge": void_knowledge(),  # intentional: resets the per-phase accumulator now that it's committed to knowledge
         "vuln_nudge":           None,   # clear stale nudge on phase transition
+        "post_execution":       False,  # reset post_execution flag for the next phase
     }
 
 
@@ -132,13 +134,15 @@ def route_after_advisor(state: MasterState) -> Literal["tactical", "merge_knowle
     return "tactical"
 
 
-def route_after_tactical(state: MasterState) -> Literal["execute", "merge_knowledge"]:
+def route_after_tactical(state: MasterState) -> Literal["execute", "vuln_advisor", "merge_knowledge"]:
     """
-    - Non-empty plan → execute (parallel)
+    - Non-empty plan → execute (if post_execution is False) or vuln_advisor (if post_execution is True)
     - Empty plan     → phase is done → merge_knowledge
     - Iteration cap  → force merge_knowledge
     """
     if state.get("plan"):
+        if state.get("post_execution"):
+            return "vuln_advisor"
         return "execute"
 
     iterations = state.get("phase_iteration_count", 0)
@@ -154,15 +158,6 @@ def route_after_tactical(state: MasterState) -> Literal["execute", "merge_knowle
         )
 
     return "merge_knowledge"
-
-
-def route_after_execute(state: MasterState) -> Literal["vuln_advisor"]:
-    """
-    After execution always run the advisor so it can nudge based on
-    fresh _extracted_knowledge before tactical plans the next cycle.
-    Loop: tactical → execute → vuln_advisor → tactical …
-    """
-    return "vuln_advisor"
 
 
 # ─── Graph construction ───────────────────────────────────────────────────────
@@ -187,15 +182,11 @@ flow.add_conditional_edges(
 flow.add_conditional_edges(
     "tactical",
     route_after_tactical,
-    {"execute": "execute", "merge_knowledge": "merge_knowledge"},
+    {"execute": "execute", "vuln_advisor": "vuln_advisor", "merge_knowledge": "merge_knowledge"},
 )
 
-# After execute: advisor sees fresh _extracted_knowledge → then tactical
-flow.add_conditional_edges(
-    "execute",
-    route_after_execute,
-    {"vuln_advisor": "vuln_advisor"},
-)
+# After execute: go back to tactical to extract results and plan the next batch
+flow.add_edge("execute", "tactical")
 
 flow.add_conditional_edges(
     "vuln_advisor",
@@ -229,6 +220,7 @@ def run_pentest(query: str, max_global_iterations: int = 200, verbose: bool = Tr
         "checked_vulns":         [],
         "final_answer":          "",
         "thinking":              "",
+        "post_execution":        False,
     }
 
     result = graph.invoke(state, config={"recursion_limit": max_global_iterations})
@@ -246,5 +238,5 @@ def run_pentest(query: str, max_global_iterations: int = 200, verbose: bool = Tr
 
 if __name__ == "__main__":
     print("starting test-1")
-    result = run_pentest(query="target ip: 10.48.190.64, focus on xss")
+    result = run_pentest(query="target ip: 10.48.153.150, focus on xss")
     print("result:", result)

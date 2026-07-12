@@ -210,15 +210,15 @@ def vuln_advisor(state: MasterState) -> dict:
                 f"[advisor] skip ({state.get('current_phase')}) — "
                 f"{nudge.skip_reason or 'nothing actionable'}"
             )
-            return {"vuln_nudge": VulnNudge(priority="skip")}
+            return {"vuln_nudge": VulnNudge(priority="skip"), "post_execution": False}
 
         logger.info(
             f"[advisor] {nudge.priority.upper()} nudge ({state.get('current_phase')}) — "
             f"{nudge.vuln_id} | targets: {nudge.specific_targets}"
         )
-        return {"vuln_nudge": nudge}
+        return {"vuln_nudge": nudge, "post_execution": False}
 
     except Exception as e:
         logger.error(f"[advisor] Failed: {e}")
         logger.info(f"Raw response: {response.content if 'response' in locals() else 'N/A'}")
-        return {"vuln_nudge": VulnNudge(priority="skip", skip_reason=f"advisor error: {e}")}
+        return {"vuln_nudge": VulnNudge(priority="skip", skip_reason=f"advisor error: {e}"), "post_execution": False}
