@@ -29,16 +29,14 @@ def search_tavily(tavily_query:str)->str:
     client = TavilyClient(api_key)
     tavily_docs = client.search(
         query=tavily_query,
-        include_answer="advanced",
-        max_results=2
+        max_results=3
     )
     
     #formatting
     query=tavily_docs.get("query","")
-    answer=tavily_docs.get("answer","")
     results=tavily_docs.get("results",[])
 
-    formatted=[f"QUESTION: {query}",f"ANSWER: {answer}","\nSOURCES:\n"]
+    formatted=[f"QUESTION: {query}","\nSOURCES:\n"]
     for i,doc in enumerate(results,1):
         title=doc.get("title","").strip()
         url=doc.get("url","").strip()

@@ -9,21 +9,23 @@ import asyncio
 import json
 from typing import Dict, List
 
-from prototype.sub_agents.curl_graph_test_mcp       import graph as curl_a
+from prototype.sub_agents.http_graph              import graph as http_a
 from prototype.sub_agents.nmap_graph_test_mcp       import graph as nmap_a
 from prototype.sub_agents.ferox_graph_test_mcp      import graph as ferox_a
 from prototype.sub_agents.python_req_graph_test_mcp import graph as python_a
 from prototype.sub_agents.xss_graph_test_mcp        import graph as xss_a
+from prototype.sub_agents.exploit_intel_graph       import graph as intel_a
 from app.utilities import dc_logger
 
 logger = dc_logger.LoggerAdap(dc_logger.get_logger(__name__))
 
 AGENT_MAP = {
     "nmap_a":   nmap_a,
-    "curl_a":   curl_a,
+    "http_a":   http_a,
     "ferox_a":  ferox_a,
     "python_a": python_a,
     "xss_a":    xss_a,
+    "intel_a":  intel_a,
 }
 
 

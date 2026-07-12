@@ -13,10 +13,10 @@ class BaseState(MessagesState):
 PHASES = ["recon", "enumeration", "vuln_analysis", "exploitation", "reporting"]
 
 PHASE_AGENT_MAP: Dict[str, List[str]] = {
-    "recon":         ["nmap_a", "curl_a"],
-    "enumeration":   ["ferox_a", "curl_a"],
-    "vuln_analysis": ["xss_a", "curl_a", "python_a"],
-    "exploitation":  ["python_a", "xss_a", "curl_a"],
+    "recon":         ["nmap_a", "http_a", "intel_a"],
+    "enumeration":   ["ferox_a", "http_a"],
+    "vuln_analysis": ["xss_a", "http_a", "python_a", "intel_a"],
+    "exploitation":  ["python_a", "xss_a", "http_a"],
     "reporting":     [],
 }
 

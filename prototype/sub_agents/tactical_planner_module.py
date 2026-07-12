@@ -217,10 +217,16 @@ def get_tactical_system_prompt(
     allowed_agents = PHASE_AGENT_MAP.get(phase, [])
     agent_descriptions = {
         "nmap_a":   "nmap_a   — Network port and service discovery",
-        "curl_a":   "curl_a   — HTTP inspection: headers, pages, endpoints, custom requests",
+        "http_a":   "http_a   — Full HTTP agent: any method (GET/POST/PUT/DELETE/OPTIONS/"
+                    "PROPFIND/PATCH), headers, cookies, JSON/form/raw body, presets "
+                    "(browser/api/webdav). Use this for all HTTP interaction.",
         "ferox_a":  "ferox_a  — Directory and file enumeration on confirmed web services",
         "python_a": "python_a — Write and execute custom Python scripts for any task",
         "xss_a":    "xss_a    — XSS payload injection and detection",
+        "intel_a":  "intel_a  — Exploit intelligence: searches Tavily, ExploitDB, GitHub, "
+                    "and NVD for known CVEs and public PoCs for a given technology/version. "
+                    "Use when a versioned service is identified. "
+                    "Task format: 'Research <technology> <version> for known vulnerabilities'",
     }
     agent_lines = "\n".join(
         f"- {agent_descriptions[a]}" for a in allowed_agents if a in agent_descriptions
