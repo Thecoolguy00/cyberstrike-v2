@@ -2,20 +2,31 @@
 """
 Master orchestration graph.
 
-Key changes vs previous version
-────────────────────────────────
-1. vuln_advisor runs EVERY cycle across ALL phases (not only vuln_analysis).
-   Graph flow: strategic → advisor → tactical → execute → advisor → tactical …
-   The advisor is now a nudge layer, not a gate.
+Graph flow
+──────────
+strategic → tactical → execute → vuln_advisor → tactical → execute → vuln_advisor …
+                                                     ↓
+                                             merge_knowledge → strategic
 
-2. execute_node uses the new parallel executor.
+Key design decisions
+────────────────────
+1. strategic goes directly to tactical on each new phase (no advisor on cycle 1).
+   The advisor would always skip on cycle 1 — the knowledge graph is empty at
+   phase start. Skipping it saves one LLM call and moves the first real nudge
+   one cycle earlier (advisor sees fresh _extracted_knowledge after the first
+   execute, not the empty phase-start state).
+
+2. vuln_advisor runs after every execute, when _extracted_knowledge is freshly
+   populated by the preceding tactical call. The advisor reads
+   merge(knowledge, _extracted_knowledge) so it sees the live state.
+
+3. execute_node uses the parallel executor.
    Independent tasks in a plan batch run concurrently via asyncio.gather.
 
-3. route_after_tactical no longer handles checked_vulns marking.
+4. route_after_tactical no longer handles checked_vulns marking.
    That responsibility moved into tactical_planner itself (cleaner ownership).
 
-4. merge_knowledge_node unchanged in logic but records executions_consumed
-   correctly using the PhaseHistoryRecord.
+5. merge_knowledge_node records executions_consumed via PhaseHistoryRecord.
 """
 
 from typing import Literal
@@ -91,15 +102,20 @@ def merge_knowledge_node(state: MasterState) -> dict:
 
 # ─── Routing ──────────────────────────────────────────────────────────────────
 
-def route_after_strategic(state: MasterState) -> Literal["vuln_advisor", "end"]:
+def route_after_strategic(state: MasterState) -> Literal["tactical", "end"]:
     """
-    Strategic planner always hands off to advisor next.
-    Advisor runs even for reporting (it will skip — cheap call).
-    Exception: if final_answer is already set, we are done.
+    Strategic planner hands off directly to tactical.
+
+    Skipping the advisor on the first call of each phase is intentional:
+    the knowledge graph is empty at phase start, so the advisor would
+    always skip — wasting one LLM call. The advisor picks up on the loop
+    after the first execute, when _extracted_knowledge is freshly populated.
+
+    Exception: if final_answer is already set, the pentest is done.
     """
     if state.get("final_answer"):
         return "end"
-    return "vuln_advisor"
+    return "tactical"
 
 
 def route_after_advisor(state: MasterState) -> Literal["tactical", "merge_knowledge"]:
@@ -142,9 +158,9 @@ def route_after_tactical(state: MasterState) -> Literal["execute", "merge_knowle
 
 def route_after_execute(state: MasterState) -> Literal["vuln_advisor"]:
     """
-    After execution always re-run the advisor so it can update its nudge
-    based on the latest results before tactical plans the next cycle.
-    This is the key change: advisor → tactical → execute → advisor loop.
+    After execution always run the advisor so it can nudge based on
+    fresh _extracted_knowledge before tactical plans the next cycle.
+    Loop: tactical → execute → vuln_advisor → tactical …
     """
     return "vuln_advisor"
 
@@ -161,16 +177,11 @@ flow.add_node("merge_knowledge", merge_knowledge_node)
 
 flow.add_edge(START, "strategic")
 
+# strategic → tactical directly (advisor has nothing to see on an empty KG)
 flow.add_conditional_edges(
     "strategic",
     route_after_strategic,
-    {"vuln_advisor": "vuln_advisor", "end": END},
-)
-
-flow.add_conditional_edges(
-    "vuln_advisor",
-    route_after_advisor,
-    {"tactical": "tactical", "merge_knowledge": "merge_knowledge"},
+    {"tactical": "tactical", "end": END},
 )
 
 flow.add_conditional_edges(
@@ -179,11 +190,17 @@ flow.add_conditional_edges(
     {"execute": "execute", "merge_knowledge": "merge_knowledge"},
 )
 
-# After execute: always back to advisor (not directly to tactical)
+# After execute: advisor sees fresh _extracted_knowledge → then tactical
 flow.add_conditional_edges(
     "execute",
     route_after_execute,
     {"vuln_advisor": "vuln_advisor"},
+)
+
+flow.add_conditional_edges(
+    "vuln_advisor",
+    route_after_advisor,
+    {"tactical": "tactical", "merge_knowledge": "merge_knowledge"},
 )
 
 flow.add_edge("merge_knowledge", "strategic")
@@ -229,5 +246,5 @@ def run_pentest(query: str, max_global_iterations: int = 200, verbose: bool = Tr
 
 if __name__ == "__main__":
     print("starting test-1")
-    result = run_pentest(query="this is the ip: 10.49.179.94, focus on xss")
+    result = run_pentest(query="target ip: 10.48.190.64, focus on xss")
     print("result:", result)
