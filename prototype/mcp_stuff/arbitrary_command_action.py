@@ -3,7 +3,7 @@
 #-------------------------------------------
 
 #NOTE: In langgraph, make this as a seperate node and add interrupt before
-#       This script is currently blacklisted in validator.py
+#       This script is currently not whitelisted in validator.py
 
 from prototype.mcp_stuff.kali_command import CommandRunner
 from prototype.mcp_stuff.validators import contains_shell_metacharacters

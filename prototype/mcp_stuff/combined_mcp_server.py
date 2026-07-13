@@ -106,47 +106,59 @@ def script_scan(target: str, script: str, ports: Optional[Union[str, List[str]]]
 
     return script_scan_action(target,script,ports)
 
-#curl for getting headers and page content
-from prototype.mcp_stuff.curl_actions import get_headers_action,get_full_page_action, get_partial_page_action
+# HTTP for interacting with web endpoints
+from prototype.mcp_stuff.http_actions import http_request_action
+from typing import Any
 
 @mcp.tool()
-def get_header(url:str)->str:
-    """Return HTTP headers (curl -I)
+def http_request(
+    method: str,
+    url: str,
+    headers: Optional[Dict[str, str]] = None,
+    params: Optional[Dict[str, str]] = None,
+    cookies: Optional[Dict[str, str]] = None,
+    raw_data: Optional[str] = None,
+    json_data: Optional[Any] = None,
+    form_data: Optional[Dict[str, str]] = None,
+    files: Optional[Dict[str, str]] = None,
+    follow_redirects: bool = True,
+    verify_ssl: bool = True,
+    timeout: int = 30,
+    max_body_size: Optional[int] = 50_000,
+    preset: str = "plain",
+) -> Dict[str, Any]:
+    """
+    Execute an HTTP request with full method and body support.
 
     Args:
-        url(str): the target url eg.,https://www.example.org/
+        method:           HTTP method — GET, POST, PUT, DELETE, HEAD,
+                          OPTIONS, PATCH, PROPFIND, etc.
+        url:              Full URL including scheme.
+        headers:          Extra request headers (merged with preset).
+        params:           URL query parameters dict.
+        cookies:          Cookie dict.
+        raw_data:         Raw request body string.
+        json_data:        JSON body — sets Content-Type: application/json.
+        form_data:        Form body — sets Content-Type: application/x-www-form-urlencoded.
+        files:            Dictionary of field names to local file paths for file upload.
+        follow_redirects: Follow 3xx redirects (default True).
+        verify_ssl:       Verify SSL certificates (default True).
+        timeout:          Seconds before giving up (default 30).
+        max_body_size:    Max size of returned response body in bytes (default 50,000).
+        preset:           Header preset — "plain" | "browser" | "api" | "webdav".
 
     Returns:
-        str: The header of the HTTP response
+        dict with keys: status, reason, headers, body, cookies, content_type,
+                        content_length, url, redirects, response_time,
+                        body_truncated, encoding, error.
     """
-    return get_headers_action(url)
-
-@mcp.tool()
-def get_full_page(url:str)->str:
-    """Return full page content (curl -sL)
-
-    Args:
-        url(str): the target url eg.,https://www.example.org/
-
-    Returns:
-        str: The page content of the HTTP response
-    """
-    return get_full_page_action(url)
-
-@mcp.tool()
-def get_partial_page(url:str, size_limit:int=2000)->str:
-    """
-    Returns the partial page content upto the sizelimit, defaults to 2000
-
-    Args
-        url(str): the target url eg.,https://www.example.org/
-        size_limit(int): the size limit of the returned page, defaults to 2000 (Optional)
-
-    Returns:
-        str: The partial content of the HTTP response depending upon the size_limit
-    """
-
-    return get_partial_page_action(url=url,size_limit=size_limit)
+    return http_request_action(
+        method=method, url=url, headers=headers, params=params,
+        cookies=cookies, raw_data=raw_data, json_data=json_data,
+        form_data=form_data, files=files, follow_redirects=follow_redirects,
+        verify_ssl=verify_ssl, timeout=timeout, max_body_size=max_body_size,
+        preset=preset,
+    )
 
 
 #xss scanners [dalfox, xsstrike]
@@ -290,6 +302,24 @@ def exe_cute_python(code:str, timeout:int=15):
     """
 
     return execute_python(code=code, timeout=timeout)
+
+# Exploit Intel Tools
+from prototype.mcp_stuff.exploit_intel_actions import (
+    searchsploit_lookup,
+)
+
+@mcp.tool()
+def searchsploit_search(technology: str) -> str:
+    """
+    Search the local ExploitDB via searchsploit for known exploits.
+
+    Args:
+        technology: Technology or CVE ID to search e.g. "copyparty", "CVE-2023-1234"
+
+    Returns:
+        str: Exploit titles, IDs, and file paths from ExploitDB
+    """
+    return searchsploit_lookup(technology)
 
 
 if __name__=="__main__":
