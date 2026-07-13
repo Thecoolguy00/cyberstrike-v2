@@ -117,11 +117,14 @@ def http_request(
     headers: Optional[Dict[str, str]] = None,
     params: Optional[Dict[str, str]] = None,
     cookies: Optional[Dict[str, str]] = None,
-    body: Optional[str] = None,
+    raw_data: Optional[str] = None,
     json_data: Optional[Any] = None,
     form_data: Optional[Dict[str, str]] = None,
+    files: Optional[Dict[str, str]] = None,
     follow_redirects: bool = True,
+    verify_ssl: bool = True,
     timeout: int = 30,
+    max_body_size: Optional[int] = 50_000,
     preset: str = "plain",
 ) -> Dict[str, Any]:
     """
@@ -134,22 +137,27 @@ def http_request(
         headers:          Extra request headers (merged with preset).
         params:           URL query parameters dict.
         cookies:          Cookie dict.
-        body:             Raw request body string.
+        raw_data:         Raw request body string.
         json_data:        JSON body — sets Content-Type: application/json.
         form_data:        Form body — sets Content-Type: application/x-www-form-urlencoded.
+        files:            Dictionary of field names to local file paths for file upload.
         follow_redirects: Follow 3xx redirects (default True).
+        verify_ssl:       Verify SSL certificates (default True).
         timeout:          Seconds before giving up (default 30).
+        max_body_size:    Max size of returned response body in bytes (default 50,000).
         preset:           Header preset — "plain" | "browser" | "api" | "webdav".
 
     Returns:
-        dict with keys: status, headers, body, cookies, content_type,
-                        response_time, redirects, truncated, error.
+        dict with keys: status, reason, headers, body, cookies, content_type,
+                        content_length, url, redirects, response_time,
+                        body_truncated, encoding, error.
     """
     return http_request_action(
         method=method, url=url, headers=headers, params=params,
-        cookies=cookies, body=body, json_data=json_data,
-        form_data=form_data, follow_redirects=follow_redirects,
-        timeout=timeout, preset=preset,
+        cookies=cookies, raw_data=raw_data, json_data=json_data,
+        form_data=form_data, files=files, follow_redirects=follow_redirects,
+        verify_ssl=verify_ssl, timeout=timeout, max_body_size=max_body_size,
+        preset=preset,
     )
 
 

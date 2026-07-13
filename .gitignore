@@ -21,6 +21,7 @@ playwright-automation/
 
 #logs
 logs/
+test_run_logs/
 
 #data folders
 data/

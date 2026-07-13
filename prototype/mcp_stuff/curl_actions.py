@@ -25,3 +25,5 @@ if __name__ == "__main__":
     print(get_headers_action("https://www.wikipedia.org/"))
         
         #add headers mimicking a real browser for passing through simple bot detection
+
+        #deprecated
