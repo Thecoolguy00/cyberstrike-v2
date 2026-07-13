@@ -84,21 +84,21 @@ def is_valid_ports(s:str)->bool:
 # -----------------------------
 # Validators (simple flow)
 # -----------------------------
-def validate_curl(args: List[str])->bool:
-    """
-    Allowed examples:
-      curl -I http://example.com
-      curl http://example.com
-    Rules:
-      - First token must be 'curl'
-      - Last token must be a URL
-      - Must not contain shell metacharacters
-      - Must contain at least one valid http(s) URL among args
-    """
-    if not args or str(args[0]).lower() != "curl":
-        return False
-    if contains_shell_metacharacters(args):
-        return False
+# def validate_curl(args: List[str])->bool:
+#     """
+#     Allowed examples:
+#       curl -I http://example.com
+#       curl http://example.com
+#     Rules:
+#       - First token must be 'curl'
+#       - Last token must be a URL
+#       - Must not contain shell metacharacters
+#       - Must contain at least one valid http(s) URL among args
+#     """
+#     if not args or str(args[0]).lower() != "curl":
+#         return False
+#     if contains_shell_metacharacters(args):
+#         return False
     
     return is_valid_url(args[-1])
 
@@ -201,7 +201,6 @@ def validate_xsstrike(args:list[str])->bool:
 # Dispatcher
 # -----------------------------
 VALIDATORS={
-    "curl":validate_curl,
     "nmap":validate_nmap,
     "feroxbuster":validate_feroxbuster,
     "dalfox":validate_dalfox,
