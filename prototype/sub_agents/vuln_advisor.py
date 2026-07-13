@@ -14,12 +14,15 @@ It is a persistent nudge: priority="high" means "do this before other work
 this cycle", priority="medium" means "keep this in mind", priority="skip"
 means "nothing obvious right now, follow your own flow".
 
-Why all phases, not just vuln_analysis?
-  - During recon: nudge toward fast surface checks (robots.txt, headers)
-    that are often missed when nmap dominates the planner's attention.
-  - During enumeration: nudge toward backup file / .git probes alongside
-    ferox directory brute-force.
-  - During vuln_analysis / exploitation: full vuln menu active.
+Phase gate — each phase has a strict whitelist of allowed nudge categories:
+  - recon:        SERVICE_EXPLOIT_INTEL only (no testing nudges)
+  - enumeration:  API_SECRET_LEAK, DIRECTORY_LISTING, SERVICE_EXPLOIT_INTEL
+  - vuln_analysis / exploitation: full nudge menu active
+  - reporting:    always skip
+
+The gate is enforced in two places: the LLM system prompt (PHASE GATE block)
+and _nudge_block() in tactical_planner_module.py (hard code-level drop).
+Two layers because LLMs occasionally hallucinate past prompt instructions.
 
 The vuln_id is added to checked_vulns by the tactical planner when it
 returns an empty plan after working the nudge (focus exhausted), NOT when
@@ -46,85 +49,104 @@ advisor_parser = PydanticOutputParser(pydantic_object=VulnNudge)
 
 # ─── System prompt ────────────────────────────────────────────────────────────
 
-ADVISOR_SYSTEM_PROMPT = """You are a senior web application penetration tester acting as a breadth-first advisor.
+ADVISOR_SYSTEM_PROMPT = """You are a senior penetration tester acting as a phase-boundary watchdog.
 
-You run EVERY planning cycle across ALL pentest phases. Your job is simple:
-look at the current knowledge graph and tell the tactical planner where the
-easiest, highest-value UNCHECKED opportunity is RIGHT NOW.
+You run every planning cycle. Your sole job: detect if the tactical planner
+is overlooking an obvious, high-value attack class given the current
+knowledge graph state.
 
-You are NOT a planner. You emit ONE nudge. The tactical planner decides how
-to act on it alongside its own plan.
+You are NOT a task planner. You do NOT prescribe how to test — only WHAT
+class of attack is missing and WHERE (concrete targets from the KG).
+You emit ONE nudge. The tactical planner decides how to act on it.
 
 OUTPUT PRIORITY LEVELS:
-  "high"   — a clear, reachable, unchecked target exists. Tactical planner
+  "high"   — a clear, reachable, unchecked class exists. Tactical planner
               MUST address this before other work this cycle.
-  "medium" — an opportunity exists but is lower urgency or less certain.
-              Tactical planner should fold it into current work if easy.
-  "skip"   — nothing new is visible right now. Tactical planner follows its
-              own flow without advisor interference.
+  "medium" — an opportunity exists but lower urgency or less certain.
+  "skip"   — nothing obviously missing. Tactical follows its own flow.
 
-────────────────────────────────────────────────────────────────────────────
-PHASE-AWARE NUDGE MENU
-(Use only what makes sense for the current phase — don't suggest vuln_analysis
-techniques during recon if the knowledge graph has nothing to probe them on)
+━━━ PHASE GATE — READ THIS FIRST ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-── RECON PHASE ──────────────────────────────────────────────────────────────
-Fast surface checks that nmap/curl often miss:
-  robots_check       : GET /robots.txt — reveals hidden paths, disallowed dirs
-  sitemap_check      : GET /sitemap.xml — reveals all routes
-  security_headers   : Inspect response headers for missing CSP/HSTS/X-Frame-Options
-  server_version     : Server/X-Powered-By headers leaking exact versions
-  http_methods       : OPTIONS/TRACE/PUT enabled? (curl -X OPTIONS /)
-  cookie_flags       : Set-Cookie missing HttpOnly/Secure/SameSite
-  cors_check         : Reflect Origin: evil.com, check ACAO header
+Each phase has a STRICT whitelist of allowed nudge categories.
+You MUST emit priority="skip" for any category not listed for the current phase,
+regardless of how obvious or high-value the opportunity appears.
+The user's query intent (e.g. "focus on xss") does NOT override phase gates.
+Vulnerability testing belongs in vuln_analysis — not before it.
 
-── ENUMERATION PHASE ────────────────────────────────────────────────────────
-Easy wins alongside directory brute-force:
-  git_exposure       : GET /.git/HEAD — source code leak
-  env_exposure       : GET /.env, /.env.local, /config.php
-  ds_store           : GET /.DS_Store — directory tree leak
-  backup_files       : Append .bak/.old/.swp/~ to known filenames
-  source_disclosure  : Append ~ or .bak to .php/.asp endpoints
-  swagger_exposure   : /api/swagger.json, /openapi.json, /swagger-ui
-  directory_listing  : Known paths returning "Index of"
+  recon:
+    ALLOWED:   SERVICE_EXPLOIT_INTEL only
+    FORBIDDEN: USER_INTENT_DRIFT, INPUT_CLASS_UNCHECKED, IDOR_UNCHECKED,
+               API_SECRET_LEAK, DIRECTORY_LISTING, CLICKJACKING_UNCHECKED
+    REASON:    Recon is ports + services + fingerprinting only. No testing.
 
-── VULN_ANALYSIS PHASE ──────────────────────────────────────────────────────
-INPUT-BASED (require input_points):
-  reflected_xss      : GET param reflected in HTML without encoding
-  html_injection     : HTML tags rendered — same targets as rxss, less filtered
-  stored_xss         : POST/comment/profile fields stored and re-rendered
-  dom_xss            : JS reads hash/search and writes to DOM
-  ssi_injection      : <!--#exec cmd=--> on .shtml/.shtm pages
-  ssti               : {{7*7}} reflection in template engines
-  open_redirect      : ?next=/?url=/?redirect= bouncing to arbitrary URL
-  crlf_injection     : \r\n in params/headers causing response splitting
-  http_param_pollution: Duplicate params inconsistently processed
-  idor               : Numeric IDs in /user/123, /invoice/456 URLs
+  enumeration:
+    ALLOWED:   API_SECRET_LEAK, DIRECTORY_LISTING, SERVICE_EXPLOIT_INTEL
+    FORBIDDEN: USER_INTENT_DRIFT, INPUT_CLASS_UNCHECKED, IDOR_UNCHECKED,
+               CLICKJACKING_UNCHECKED
+    REASON:    Enumeration maps surface — no injection or vuln testing yet.
 
-ENDPOINT/FILE-BASED (require endpoints):
-  directory_listing  : /path/ returning "Index of"
-  backup_files       : .bak/.old/.swp/~ on known filenames
-  source_disclosure  : .php~/.php.bak source code exposed
+  vuln_analysis:
+    ALLOWED:   all categories (1–7)
 
-── EXPLOITATION PHASE ───────────────────────────────────────────────────────
-  confirm_xss        : Confirm unconfirmed XSS findings with full PoC
-  confirm_redirect   : Confirm open_redirect findings
-  chain_vulns        : Chain findings (e.g. info_disclosure → auth bypass)
+  exploitation:
+    ALLOWED:   all categories (1–7)
 
-────────────────────────────────────────────────────────────────────────────
-DECISION RULES:
-1. Read the knowledge graph: open_ports, web_services, endpoints,
-   input_points, findings, notes — what EXISTS right now?
-2. Read checked_vulns — NEVER suggest something already in that list
-3. Read the current phase — only suggest things appropriate for this phase
-4. Ask: "is there a fast, easy, unchecked win sitting right in front of us?"
-5. If YES and concrete targets exist in the knowledge graph → priority="high"
-6. If YES but targets are uncertain → priority="medium"
-7. If nothing new is visible → priority="skip" + skip_reason
-8. specific_targets MUST be concrete values (actual URLs/params/paths from
-   the knowledge graph), not generic descriptions
-9. suggested_agents must be from the available agents for this phase
-10. If the user query specifies a vulnerability type, prioritise it first
+  reporting:
+    ALLOWED:   none — always emit priority="skip"
+
+━━━ NUDGE CATEGORIES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. USER_INTENT_DRIFT                          [vuln_analysis, exploitation only]
+   Trigger: Original query names a specific vuln type (XSS, SQLi, IDOR...),
+            but no attempt of that type appears in the execution history.
+   Priority: high
+   Example: "User asked for XSS. No XSS attempts visible in history."
+
+2. INPUT_CLASS_UNCHECKED                      [vuln_analysis, exploitation only]
+   Trigger: knowledge.input_points is not empty AND no injection-class
+            testing (XSS, SQLi, HTMLi, SSTI, open redirect) has occurred.
+   Priority: high
+
+3. IDOR_UNCHECKED                             [vuln_analysis, exploitation only]
+   Trigger: Numeric IDs visible in knowledge.endpoints or input_points
+            (e.g. /user/123, /invoice/456) AND no IDOR testing in history.
+   Priority: high
+
+4. API_SECRET_LEAK                            [enumeration, vuln_analysis, exploitation]
+   Trigger: knowledge.web_services exists AND no page source / JS file
+            secret search has occurred yet.
+   Priority: medium
+
+5. SERVICE_EXPLOIT_INTEL                      [recon, enumeration, vuln_analysis, exploitation]
+   Trigger: Web services in knowledge.web_services or open ports in
+            knowledge.open_ports exist, and no exploit intelligence lookup
+            using intel_a has been performed yet on that service/technology.
+   Priority: medium
+   Example: "IIS web service identified at http://10.0.0.5:80 — run intel_a to check for public exploits."
+
+6. DIRECTORY_LISTING                          [enumeration, vuln_analysis, exploitation]
+   Trigger: knowledge.endpoints contains directory-style paths AND
+            no directory listing check has occurred.
+   Priority: medium
+
+7. CLICKJACKING_UNCHECKED                     [vuln_analysis, exploitation only]
+   Trigger: knowledge.web_services exists AND no X-Frame-Options or
+            CSP frame-ancestors check in history.
+   Priority: medium (emit only if categories 1–6 are all clear)
+
+━━━ DECISION RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. FIRST check the PHASE GATE above — if the current phase does not allow
+   any category, emit priority="skip" immediately without evaluating further.
+2. Among allowed categories, check original query for a named vuln type —
+   USER_INTENT_DRIFT is priority=high if unchecked AND phase allows it.
+3. Evaluate remaining allowed categories in order (2–7); emit the first one
+   that triggers.
+4. NEVER suggest anything already in checked_vulns.
+5. specific_targets MUST be concrete values from the knowledge graph
+   (actual URLs, parameter names, port numbers) — NOT generic descriptions.
+6. suggested_agents must be from the available agents for this phase.
+7. If no allowed category triggers: priority="skip" + skip_reason.
 
 OUTPUT FORMAT:
 """ + advisor_parser.get_format_instructions()
@@ -133,7 +155,16 @@ OUTPUT FORMAT:
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def _knowledge_snapshot(state: MasterState) -> str:
-    knowledge = state.get("knowledge", {})
+    # Merge _extracted_knowledge into knowledge so the advisor sees the
+    # live state, not just what was known at the start of this phase.
+    # (knowledge is only updated by merge_knowledge_node at phase end;
+    #  _extracted_knowledge carries discoveries from the most recent
+    #  tactical cycle before they are committed.)
+    from prototype.sub_agents.schemas import merge_knowledge, void_knowledge
+    knowledge = merge_knowledge(
+        state.get("knowledge", void_knowledge()),
+        state.get("_extracted_knowledge", void_knowledge()),
+    )
 
     def _s(obj):
         return obj.model_dump() if hasattr(obj, "model_dump") else obj
@@ -212,15 +243,15 @@ def vuln_advisor(state: MasterState) -> dict:
                 f"[advisor] skip ({state.get('current_phase')}) — "
                 f"{nudge.skip_reason or 'nothing actionable'}"
             )
-            return {"vuln_nudge": VulnNudge(priority="skip")}
+            return {"vuln_nudge": VulnNudge(priority="skip"), "last_node": "vuln_advisor"}
 
         logger.info(
             f"[advisor] {nudge.priority.upper()} nudge ({state.get('current_phase')}) — "
             f"{nudge.vuln_id} | targets: {nudge.specific_targets}"
         )
-        return {"vuln_nudge": nudge}
+        return {"vuln_nudge": nudge, "last_node": "vuln_advisor"}
 
     except Exception as e:
         logger.error(f"[advisor] Failed: {e}")
         logger.info(f"Raw response: {response.content if 'response' in locals() else 'N/A'}")
-        return {"vuln_nudge": VulnNudge(priority="skip", skip_reason=f"advisor error: {e}")}
+        return {"vuln_nudge": VulnNudge(priority="skip", skip_reason=f"advisor error: {e}"), "last_node": "vuln_advisor"}

@@ -10,6 +10,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 from prototype.sub_agents.helper import extract_tool_Schema, format_history, response_route, tool_schema_from_func, mcp_exec_node, tool_router
 from prototype.sub_agents.true_mcp_exec import get_mcp_tools
 from prototype.sub_agents.search_actions import search_tavily
+from prototype.sub_agents.tools import wait_for
 from prototype.sub_agents.schema_validator import invoke_and_validate
 from prototype.sub_agents.prompt import get_agent_system_message, get_agent_user_message
 from prototype.sub_agents.schemas import BaseState
@@ -31,7 +32,7 @@ ferox_tool_names = [
 ferox_tool_list=[t for t in tool_list if t.name in ferox_tool_names]
 
 mcp_tool_schema=extract_tool_Schema(ferox_tool_list)
-normal_tool_schema=tool_schema_from_func([search_tavily])
+normal_tool_schema=tool_schema_from_func([search_tavily, wait_for])
 
 tool_schema=mcp_tool_schema+normal_tool_schema
 
@@ -66,7 +67,7 @@ async def init_graph():
 
     flow.add_node("mcp_exec",mcp_exec_node)
     flow.add_node("ferox_agent",agent_node)
-    flow.add_node("tools",ToolNode([search_tavily]))
+    flow.add_node("tools",ToolNode([search_tavily, wait_for]))
 
     flow.add_edge(START,"ferox_agent")
     flow.add_conditional_edges(
