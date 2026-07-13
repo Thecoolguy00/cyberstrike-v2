@@ -64,48 +64,62 @@ RECON_PLAYBOOK = """
 RECON
 
 Objective
-Discover reachable services.
+Discover reachable services and perform initial exploit research on identified technologies.
 
 State
 
 IF knowledge.open_ports is empty
-→ Discover ports.
+→ Discover ports (nmap_a).
 
-IF confirmed HTTP services exist but are not fingerprinted
-→ Fingerprint them.
+IF confirmed services or open ports exist but are not fingerprinted
+→ Fingerprint them (nmap_a for version/banner, http_a GET/HEAD for HTTP confirmation only).
 
-IF no HTTP services exist
+IF technology version or software details are discovered
+→ Run exploit intelligence (intel_a) to check for known vulnerabilities and public exploits.
+
+IF no ports are found open even after a full port scan
 → Finish phase.
 
-Forbidden
-- Interact only with confirmed ports and services.
-- No enumeration.
-- No vulnerability testing.
+Forbidden — HARD STOPS, no exceptions
+- NO injection payloads of any kind: no XSS, SQLi, template injection, command injection,
+  path traversal, or parameter fuzzing. This means no <script>, alert(), ', ", --, ;, ../
+  in any request parameter — even "just to check reflection".
+- NO endpoint enumeration (no ferox_a, no wordlist scanning, no directory brute-force).
+- NO vulnerability testing of any kind. Exploit intelligence (intel_a) looks up public
+  databases — it does NOT test the live target.
+- http_a in this phase: GET and HEAD requests only, to confirm a port serves HTTP.
+  Do NOT fuzz, probe, or send payloads.
 """
 
 ENUMERATION_PLAYBOOK = """
 ENUMERATION
 
 Objective
-Map web attack surface.
+Map web attack surface: find endpoints, parameters, forms, and allowed methods.
 
 State
 
 IF knowledge.web_services is empty
-→ Finish phase.
+→ Finish phase immediately (nothing to enumerate).
 
 IF endpoints are incomplete
-→ Enumerate endpoints.
+→ Enumerate endpoints (ferox_a wordlist scan, http_a OPTIONS/PROPFIND).
 
 IF input_points are incomplete
-→ Inspect endpoints for parameters and forms.
+→ Inspect discovered endpoints for parameters and forms (http_a GET only).
 
 IF attack surface is mapped
 → Finish phase.
 
-Forbidden
-- No vulnerability testing.
-- No new reconnaissance.
+Forbidden — HARD STOPS, no exceptions
+- NO injection payloads of any kind: no XSS, SQLi, template injection, command injection,
+  path traversal, or reflection probing. This means no <script>, alert(), ', ", --, ;, ../
+  in any request parameter — even "just to see if it reflects".
+- NO vulnerability testing. Discovery only.
+- NO new port scanning or service fingerprinting (that was recon).
+- http_a in this phase: GET, HEAD, OPTIONS, PROPFIND only.
+  Do NOT send POST/PUT/PATCH/DELETE with payloads.
+  Do NOT fuzz parameter values.
 """
 
 VULN_ANALYSIS_PLAYBOOK = """
@@ -117,9 +131,10 @@ Identify vulnerabilities.
 Priority
 
 1. User-requested vulnerability type (check original query).
-2. Input-based testing (XSS, SQLi, HTMLi, open redirect, IDOR).
-3. Endpoint-based testing (backup files, source disclosure, directory listing).
-4. Configuration checks (CORS, clickjacking, cookie flags, secret leaks).
+2. Exploit intelligence research for all newly discovered software versions, platforms, or custom services to check for known vulnerabilities and public exploits.
+3. Input-based testing (XSS, SQLi, HTMLi, open redirect, IDOR).
+4. Endpoint-based testing (backup files, source disclosure, directory listing).
+5. Configuration checks (CORS, clickjacking, cookie flags, secret leaks).
 
 Forbidden
 - No exploitation.
@@ -171,12 +186,39 @@ TACTICAL_PHASE_PLAYBOOKS: Dict[str, str] = {
 
 # ─── Nudge block injected into system prompt ──────────────────────────────────
 
-def _nudge_block(nudge: Optional[VulnNudge], allowed_agents: List[str]) -> str:
+# Nudge categories that involve active vulnerability testing / injection.
+# These are NEVER permitted in recon or enumeration regardless of nudge priority.
+_TESTING_NUDGE_IDS = {
+    "user_intent_drift",
+    "input_class_unchecked",
+    "idor_unchecked",
+    "clickjacking_unchecked",
+    # any future injection-class nudge ids go here
+}
+
+# Phases in which active testing nudges are forbidden
+_NO_TESTING_PHASES = {"recon", "enumeration"}
+
+
+def _nudge_block(nudge: Optional[VulnNudge], allowed_agents: List[str], phase: str = "") -> str:
     """
     Render the advisor's VulnNudge as a prompt block.
-    Only injected when priority is high or medium.
+
+    Phase gate enforced here as a second safety layer (the advisor already
+    applies its own gate, but the tactical planner is the last line of defence):
+    - Any testing/injection nudge is silently dropped in recon and enumeration.
+    - Only discovery-class nudges (exploit intel, secret leak, dir listing)
+      are forwarded in those early phases.
     """
     if not nudge or nudge.priority == "skip" or not nudge.vuln_id:
+        return ""
+
+    # Hard drop: testing nudges must never appear in early phases
+    if phase in _NO_TESTING_PHASES and nudge.vuln_id.lower() in _TESTING_NUDGE_IDS:
+        logger.warning(
+            f"[tactical] Dropped '{nudge.vuln_id}' nudge in phase '{phase}' "
+            f"— testing nudges are forbidden before vuln_analysis"
+        )
         return ""
 
     valid_agents = [a for a in nudge.suggested_agents if a in allowed_agents]
@@ -184,9 +226,9 @@ def _nudge_block(nudge: Optional[VulnNudge], allowed_agents: List[str]) -> str:
     targets_str  = "\n".join(f"  - {t}" for t in nudge.specific_targets) or "  - derive from knowledge graph"
 
     urgency = (
-        "⚠ HIGH PRIORITY — address this BEFORE other tasks this cycle."
+        "⚠ HIGH PRIORITY — address this before other tasks this cycle."
         if nudge.priority == "high"
-        else "ℹ MEDIUM PRIORITY — fold into current work if not too costly."
+        else "ℹ MEDIUM PRIORITY — fold into current work if it fits naturally."
     )
 
     return f"""
@@ -199,11 +241,16 @@ ADVISOR NUDGE ({nudge.priority.upper()})
 {targets_str}
 
   HOW TO HANDLE:
-  - If priority=high: include at least one task probing this vuln in the plan.
-    Assign it an empty depends_on so it runs in parallel with other ready tasks.
-  - If priority=medium: include it if it fits naturally; skip if plan is already full.
-  - When you return an EMPTY plan (focus exhausted), set phase_summary and the
-    graph will automatically mark "{nudge.vuln_id}" as checked.
+  ⚠ IMPORTANT: The PHASE PLAYBOOK above is the primary authority.
+    Only act on this nudge if it is permitted by the current phase.
+    If the nudge asks for something the playbook forbids (e.g. injection
+    testing during recon/enumeration), IGNORE this nudge entirely and
+    follow the playbook instead.
+  - If permitted and priority=high: include at least one task probing this
+    in the plan with empty depends_on (runs in parallel).
+  - If permitted and priority=medium: include if it fits; skip if plan full.
+  - When you return an EMPTY plan (focus exhausted), set phase_summary and
+    the graph will automatically mark "{nudge.vuln_id}" as checked.
 """
 
 
@@ -233,7 +280,7 @@ def get_tactical_system_prompt(
     ) or "- No agents available. Return empty plan + phase_summary immediately."
 
     playbook      = TACTICAL_PHASE_PLAYBOOKS.get(phase, "")
-    nudge_section = _nudge_block(nudge, allowed_agents)
+    nudge_section = _nudge_block(nudge, allowed_agents, phase)
 
     return f"""You are a tactical task planner for ONE phase of a web pentest.
 
@@ -245,8 +292,8 @@ AGENTS AVAILABLE THIS PHASE:
 {agent_lines}
 
 {GLOBAL_RULES}
-{playbook}
 {nudge_section}
+{playbook}
 Note out-of-scope observations in extracted_knowledge.notes (don't pursue them).
 ALWAYS populate extracted_knowledge every cycle — even mid-phase.
 

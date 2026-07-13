@@ -60,7 +60,7 @@ def execute_node(state: MasterState) -> dict:
         **state,
         "execution_history": state.get("execution_history", []) + executions,
         "plan": [],
-        "post_execution": True,
+        "last_node": "execute",
     }
 
 
@@ -98,7 +98,7 @@ def merge_knowledge_node(state: MasterState) -> dict:
         "_phase_summary":       "",
         "_extracted_knowledge": void_knowledge(),  # intentional: resets the per-phase accumulator now that it's committed to knowledge
         "vuln_nudge":           None,   # clear stale nudge on phase transition
-        "post_execution":       False,  # reset post_execution flag for the next phase
+        "last_node":            "merge_knowledge",  # reset last_node flag for the next phase
     }
 
 
@@ -136,12 +136,12 @@ def route_after_advisor(state: MasterState) -> Literal["tactical", "merge_knowle
 
 def route_after_tactical(state: MasterState) -> Literal["execute", "vuln_advisor", "merge_knowledge"]:
     """
-    - Non-empty plan → execute (if post_execution is False) or vuln_advisor (if post_execution is True)
+    - Non-empty plan → execute (if last_node is not "execute") or vuln_advisor (if last_node is "execute")
     - Empty plan     → phase is done → merge_knowledge
     - Iteration cap  → force merge_knowledge
     """
     if state.get("plan"):
-        if state.get("post_execution"):
+        if state.get("last_node") == "execute":
             return "vuln_advisor"
         return "execute"
 
@@ -220,7 +220,7 @@ def run_pentest(query: str, max_global_iterations: int = 200, verbose: bool = Tr
         "checked_vulns":         [],
         "final_answer":          "",
         "thinking":              "",
-        "post_execution":        False,
+        "last_node":             "",
     }
 
     result = graph.invoke(state, config={"recursion_limit": max_global_iterations})
@@ -238,5 +238,5 @@ def run_pentest(query: str, max_global_iterations: int = 200, verbose: bool = Tr
 
 if __name__ == "__main__":
     print("starting test-1")
-    result = run_pentest(query="target ip: 10.48.153.150, focus on xss")
+    result = run_pentest(query="target ip: 10.49.189.219, focus on xss")
     print("result:", result)
