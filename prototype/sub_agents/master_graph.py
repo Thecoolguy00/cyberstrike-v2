@@ -4,13 +4,13 @@ Master orchestration graph.
 
 Graph flow
 ──────────
-strategic → tactical → execute → vuln_advisor → tactical → execute → vuln_advisor …
-                                                     ↓
-                                             merge_knowledge → strategic
+strategic → tactical_planner → execute → tactical_extractor → vuln_advisor → tactical_planner → execute …
+                                                                                  ↓
+                                                                          merge_knowledge → strategic
 
 Key design decisions
 ────────────────────
-1. strategic goes directly to tactical on each new phase (no advisor on cycle 1).
+1. strategic goes directly to tactical_planner on each new phase (no advisor on cycle 1).
    The advisor would always skip on cycle 1 — the knowledge graph is empty at
    phase start. Skipping it saves one LLM call and moves the first real nudge
    one cycle earlier (advisor sees fresh _extracted_knowledge after the first
@@ -43,7 +43,7 @@ from prototype.sub_agents.schemas import (
     merge_knowledge,
 )
 from prototype.sub_agents.strategic_planner_module import strategic_planner
-from prototype.sub_agents.tactical_planner_module  import tactical_planner
+from prototype.sub_agents.tactical_planner_module  import tactical_planner, tactical_extractor
 from prototype.sub_agents.vuln_advisor             import vuln_advisor
 from prototype.sub_agents.executor                 import execute_plan
 
@@ -59,6 +59,7 @@ def execute_node(state: MasterState) -> dict:
     return {
         **state,
         "execution_history": state.get("execution_history", []) + executions,
+        "last_execution_results": executions,
         "plan": [],
         "last_node": "execute",
     }
@@ -104,9 +105,9 @@ def merge_knowledge_node(state: MasterState) -> dict:
 
 # ─── Routing ──────────────────────────────────────────────────────────────────
 
-def route_after_strategic(state: MasterState) -> Literal["tactical", "end"]:
+def route_after_strategic(state: MasterState) -> Literal["tactical_planner", "end"]:
     """
-    Strategic planner hands off directly to tactical.
+    Strategic planner hands off directly to tactical_planner.
 
     Skipping the advisor on the first call of each phase is intentional:
     the knowledge graph is empty at phase start, so the advisor would
@@ -117,12 +118,12 @@ def route_after_strategic(state: MasterState) -> Literal["tactical", "end"]:
     """
     if state.get("final_answer"):
         return "end"
-    return "tactical"
+    return "tactical_planner"
 
 
-def route_after_advisor(state: MasterState) -> Literal["tactical", "merge_knowledge"]:
+def route_after_advisor(state: MasterState) -> Literal["tactical_planner", "merge_knowledge"]:
     """
-    Advisor always feeds into tactical unless the phase has no agents at
+    Advisor always feeds into tactical_planner unless the phase has no agents at
     all (reporting), in which case we go straight to merge_knowledge so
     strategic can produce the final_answer.
     """
@@ -131,18 +132,16 @@ def route_after_advisor(state: MasterState) -> Literal["tactical", "merge_knowle
     if not PHASE_AGENT_MAP.get(phase):
         # reporting phase — no agents, let strategic synthesise
         return "merge_knowledge"
-    return "tactical"
+    return "tactical_planner"
 
 
-def route_after_tactical(state: MasterState) -> Literal["execute", "vuln_advisor", "merge_knowledge"]:
+def route_after_tactical(state: MasterState) -> Literal["execute", "merge_knowledge"]:
     """
-    - Non-empty plan → execute (if last_node is not "execute") or vuln_advisor (if last_node is "execute")
+    - Non-empty plan → execute
     - Empty plan     → phase is done → merge_knowledge
     - Iteration cap  → force merge_knowledge
     """
     if state.get("plan"):
-        if state.get("last_node") == "execute":
-            return "vuln_advisor"
         return "execute"
 
     iterations = state.get("phase_iteration_count", 0)
@@ -164,34 +163,38 @@ def route_after_tactical(state: MasterState) -> Literal["execute", "vuln_advisor
 
 flow = StateGraph(MasterState)
 
-flow.add_node("strategic",       strategic_planner)
-flow.add_node("vuln_advisor",    vuln_advisor)
-flow.add_node("tactical",        tactical_planner)
-flow.add_node("execute",         execute_node)
-flow.add_node("merge_knowledge", merge_knowledge_node)
+flow.add_node("strategic",          strategic_planner)
+flow.add_node("vuln_advisor",       vuln_advisor)
+flow.add_node("tactical_planner",   tactical_planner)
+flow.add_node("tactical_extractor", tactical_extractor)
+flow.add_node("execute",            execute_node)
+flow.add_node("merge_knowledge",    merge_knowledge_node)
 
 flow.add_edge(START, "strategic")
 
-# strategic → tactical directly (advisor has nothing to see on an empty KG)
+# strategic → tactical_planner directly (advisor has nothing to see on an empty KG)
 flow.add_conditional_edges(
     "strategic",
     route_after_strategic,
-    {"tactical": "tactical", "end": END},
+    {"tactical_planner": "tactical_planner", "end": END},
 )
 
 flow.add_conditional_edges(
-    "tactical",
+    "tactical_planner",
     route_after_tactical,
-    {"execute": "execute", "vuln_advisor": "vuln_advisor", "merge_knowledge": "merge_knowledge"},
+    {"execute": "execute", "merge_knowledge": "merge_knowledge"},
 )
 
-# After execute: go back to tactical to extract results and plan the next batch
-flow.add_edge("execute", "tactical")
+# After execute: go to tactical_extractor to pull out findings from the execution results
+flow.add_edge("execute", "tactical_extractor")
+
+# After extraction: go to vuln_advisor to look for high/medium nudge targets
+flow.add_edge("tactical_extractor", "vuln_advisor")
 
 flow.add_conditional_edges(
     "vuln_advisor",
     route_after_advisor,
-    {"tactical": "tactical", "merge_knowledge": "merge_knowledge"},
+    {"tactical_planner": "tactical_planner", "merge_knowledge": "merge_knowledge"},
 )
 
 flow.add_edge("merge_knowledge", "strategic")
@@ -213,6 +216,7 @@ def run_pentest(query: str, max_global_iterations: int = 200, verbose: bool = Tr
         "knowledge":             void_knowledge(),
         "plan":                  [],
         "execution_history":     [],
+        "last_execution_results": [],
         "phase_history":         [],
         "_phase_summary":        "",
         "_extracted_knowledge":  void_knowledge(),
