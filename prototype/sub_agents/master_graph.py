@@ -44,7 +44,7 @@ from prototype.sub_agents.schemas import (
 )
 from prototype.sub_agents.strategic_planner_module import strategic_planner
 from prototype.sub_agents.tactical_planner_module  import tactical_planner, tactical_extractor
-from prototype.sub_agents.vuln_advisor             import vuln_advisor
+from prototype.sub_agents.plan_reviewer             import plan_reviewer
 from prototype.sub_agents.executor                 import execute_plan
 
 logger = dc_logger.LoggerAdap(dc_logger.get_logger(__name__))
@@ -105,41 +105,30 @@ def merge_knowledge_node(state: MasterState) -> dict:
 
 # ─── Routing ──────────────────────────────────────────────────────────────────
 
+def phase_complete(state: MasterState) -> bool:
+    phase = state.get("current_phase")
+    knowledge = state.get("knowledge", void_knowledge())
+    coverage = knowledge.get("coverage", {}).get(phase, {})
+    if not coverage:
+        # If no coverage defined for phase, it's complete
+        return True
+    # If any required check is not completed, phase is not complete
+    for check_id, check_val in coverage.items():
+        if check_val.get("required") and not check_val.get("completed"):
+            return False
+    return True
+
+
 def route_after_strategic(state: MasterState) -> Literal["tactical_planner", "end"]:
-    """
-    Strategic planner hands off directly to tactical_planner.
-
-    Skipping the advisor on the first call of each phase is intentional:
-    the knowledge graph is empty at phase start, so the advisor would
-    always skip — wasting one LLM call. The advisor picks up on the loop
-    after the first execute, when _extracted_knowledge is freshly populated.
-
-    Exception: if final_answer is already set, the pentest is done.
-    """
     if state.get("final_answer"):
         return "end"
     return "tactical_planner"
 
 
-def route_after_advisor(state: MasterState) -> Literal["tactical_planner", "merge_knowledge"]:
-    """
-    Advisor always feeds into tactical_planner unless the phase has no agents at
-    all (reporting), in which case we go straight to merge_knowledge so
-    strategic can produce the final_answer.
-    """
-    from prototype.sub_agents.schemas import PHASE_AGENT_MAP
-    phase = state.get("current_phase", "")
-    if not PHASE_AGENT_MAP.get(phase):
-        # reporting phase — no agents, let strategic synthesise
-        return "merge_knowledge"
-    return "tactical_planner"
-
-
-def route_after_tactical(state: MasterState) -> Literal["execute", "merge_knowledge"]:
+def route_after_reviewer(state: MasterState) -> Literal["execute", "merge_knowledge"]:
     """
     - Non-empty plan → execute
-    - Empty plan     → phase is done → merge_knowledge
-    - Iteration cap  → force merge_knowledge
+    - Empty plan or Iteration cap → merge_knowledge
     """
     if state.get("plan"):
         return "execute"
@@ -147,10 +136,9 @@ def route_after_tactical(state: MasterState) -> Literal["execute", "merge_knowle
     iterations = state.get("phase_iteration_count", 0)
     if iterations >= MAX_PHASE_ITERATIONS and not state.get("_phase_summary"):
         logger.warning(
-            f"[tactical] Phase '{state['current_phase']}' hit iteration cap "
+            f"[reviewer] Phase '{state['current_phase']}' hit iteration cap "
             f"({MAX_PHASE_ITERATIONS}) — forcing advance"
         )
-        # mutate in-place before returning (safe in LangGraph node routing)
         state["_phase_summary"] = (
             f"Phase '{state['current_phase']}' ended at iteration cap "
             f"({MAX_PHASE_ITERATIONS}) without an explicit completion signal."
@@ -159,12 +147,31 @@ def route_after_tactical(state: MasterState) -> Literal["execute", "merge_knowle
     return "merge_knowledge"
 
 
+MAX_STUCK_CYCLES = 3
+
+
+def route_after_extractor(state: MasterState) -> Literal["tactical_planner", "merge_knowledge"]:
+    """
+    Check if the phase has met all its coverage goals or is stuck.
+    """
+    if phase_complete(state):
+        return "merge_knowledge"
+    
+    if state.get("stuck_cycle_count", 0) >= MAX_STUCK_CYCLES:
+        logger.warning(
+            f"[master_graph] Phase '{state['current_phase']}' hit MAX_STUCK_CYCLES ({MAX_STUCK_CYCLES}) — forcing advance"
+        )
+        return "merge_knowledge"
+        
+    return "tactical_planner"
+
+
 # ─── Graph construction ───────────────────────────────────────────────────────
 
 flow = StateGraph(MasterState)
 
 flow.add_node("strategic",          strategic_planner)
-flow.add_node("vuln_advisor",       vuln_advisor)
+flow.add_node("plan_reviewer",      plan_reviewer)
 flow.add_node("tactical_planner",   tactical_planner)
 flow.add_node("tactical_extractor", tactical_extractor)
 flow.add_node("execute",            execute_node)
@@ -172,28 +179,28 @@ flow.add_node("merge_knowledge",    merge_knowledge_node)
 
 flow.add_edge(START, "strategic")
 
-# strategic → tactical_planner directly (advisor has nothing to see on an empty KG)
 flow.add_conditional_edges(
     "strategic",
     route_after_strategic,
     {"tactical_planner": "tactical_planner", "end": END},
 )
 
+# tactical_planner goes straight to reviewer
+flow.add_edge("tactical_planner", "plan_reviewer")
+
+# reviewer routes to execute or merge_knowledge
 flow.add_conditional_edges(
-    "tactical_planner",
-    route_after_tactical,
+    "plan_reviewer",
+    route_after_reviewer,
     {"execute": "execute", "merge_knowledge": "merge_knowledge"},
 )
 
-# After execute: go to tactical_extractor to pull out findings from the execution results
 flow.add_edge("execute", "tactical_extractor")
 
-# After extraction: go to vuln_advisor to look for high/medium nudge targets
-flow.add_edge("tactical_extractor", "vuln_advisor")
-
+# after extraction, check if phase is complete
 flow.add_conditional_edges(
-    "vuln_advisor",
-    route_after_advisor,
+    "tactical_extractor",
+    route_after_extractor,
     {"tactical_planner": "tactical_planner", "merge_knowledge": "merge_knowledge"},
 )
 
@@ -225,18 +232,40 @@ def run_pentest(query: str, max_global_iterations: int = 200, verbose: bool = Tr
         "final_answer":          "",
         "thinking":              "",
         "last_node":             "",
+        "metrics": {
+            "cycles": 0,
+            "reviewer_edits": 0,
+            "coverage_completed": 0,
+            "duplicate_tasks_removed": 0,
+            "intel_tasks": 0,
+            "stuck_events": 0,
+            "strategic_invocations": 0
+        },
     }
 
     result = graph.invoke(state, config={"recursion_limit": max_global_iterations})
 
     if verbose:
         logger.info(f"FINAL ANSWER:\n{result.get('final_answer', '')}")
+        m = result.get("metrics", {})
+        logger.info(
+            f"\n=== PENTEST METRICS ===\n"
+            f"Cycles: {m.get('cycles', 0)}\n"
+            f"Coverage Completed: {m.get('coverage_completed', 0)}\n"
+            f"Reviewer edits: {m.get('reviewer_edits', 0)}\n"
+            f"Intel tasks: {m.get('intel_tasks', 0)}\n"
+            f"Strategic calls: {m.get('strategic_invocations', 0)}\n"
+            f"Duplicate prevention: {m.get('duplicate_tasks_removed', 0)}\n"
+            f"Stuck events: {m.get('stuck_events', 0)}\n"
+            f"======================="
+        )
 
     return {
         "final_answer":      result.get("final_answer",      ""),
         "knowledge":         result.get("knowledge",         void_knowledge()),
         "phase_history":     result.get("phase_history",     []),
         "execution_history": result.get("execution_history", []),
+        "metrics":           result.get("metrics",           {}),
     }
 
 

@@ -99,15 +99,30 @@ async def execute_plan_parallel(plan: List[dict], verbose: bool = True) -> List[
         async def _run_one(task: dict) -> Dict[str, str]:
             agent = task["agent"]
             desc  = task["task_description"]
+            status = "SUCCESS"
             if agent not in AGENT_MAP:
                 result = f"Unknown agent: {agent}"
+                status = "FAILED"
             else:
                 if verbose:
                     logger.info(f"  → [{agent}] {desc[:200]}")
-                result = await _run_agent(AGENT_MAP[agent], desc)
+                try:
+                    result = await _run_agent(AGENT_MAP[agent], desc)
+                    if "execution failed" in result.lower():
+                        status = "FAILED"
+                except Exception as e:
+                    result = f"Agent execution failed: {str(e)}"
+                    status = "FAILED"
                 if verbose:
                     logger.info(f"  ← [{agent}] {result[:200]}")
-            return {"agent": agent, "task": desc, "result": result, "_task_id": task["task_id"]}
+            return {
+                "agent": agent,
+                "task": desc,
+                "result": result,
+                "_task_id": task["task_id"],
+                "status": status,
+                "coverage_keys": task.get("coverage_keys", [])
+            }
 
         batch_results = await asyncio.gather(*[_run_one(t) for t in ready])
 
