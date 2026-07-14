@@ -37,30 +37,30 @@ MAX_PHASE_ITERATIONS = 8
 # ─── Knowledge graph ──────────────────────────────────────────────────────────
 
 class OpenPort(TypedDict, total=False):
-    port: int
-    service: str
-    version: str
-    state: str
+    port: Optional[int]
+    service: Optional[str]
+    version: Optional[str]
+    state: Optional[str]
 
 class WebService(TypedDict, total=False):
-    url: str
-    port: int
-    tech_stack: List[str]
-    headers: Dict[str, str]
-    title: str
+    url: Optional[str]
+    port: Optional[int]
+    tech_stack: Optional[List[str]]
+    headers: Optional[Dict[str, str]]
+    title: Optional[str]
 
 class InputPoint(TypedDict, total=False):
-    url: str
-    param: str
-    method: str
-    context: str
+    url: Optional[str]
+    param: Optional[str]
+    method: Optional[str]
+    context: Optional[str]
 
 class Finding(TypedDict, total=False):
-    type: str
-    location: str
-    severity: str
-    confirmed: bool
-    description: str
+    type: Optional[str]
+    location: Optional[str]
+    severity: Optional[str]
+    confirmed: Optional[bool]
+    description: Optional[str]
 
 
 class KnownCVE(TypedDict, total=False):
@@ -68,15 +68,15 @@ class KnownCVE(TypedDict, total=False):
     A CVE discovered by intel_a during recon/enumeration.
     Carried forward so vuln_analysis knows exactly what to test.
     """
-    cve_id:            str   # e.g. "CVE-2023-38501"
-    technology:        str   # e.g. "copyparty"
-    version:           str   # e.g. "1.8.6" or "unknown"
-    severity:          str   # Critical/High/Medium/Low/Unknown
-    public_exploit:    bool
-    github_poc:        bool
-    description:       str   # one-line summary from intel report
-    recommended_tests: List[str]  # actionable test hints from intel report
-    tested:            bool  # set True by tactical when a test task is dispatched
+    cve_id:            Optional[str]   # e.g. "CVE-2023-38501"
+    technology:        Optional[str]   # e.g. "copyparty"
+    version:           Optional[str]   # e.g. "1.8.6" or "unknown"
+    severity:          Optional[str]   # Critical/High/Medium/Low/Unknown
+    public_exploit:    Optional[bool]
+    github_poc:        Optional[bool]
+    description:       Optional[str]   # one-line summary from intel report
+    recommended_tests: Optional[List[str]]  # actionable test hints from intel report
+    tested:            Optional[bool]  # set True by tactical when a test task is dispatched
 
 
 class TargetKnowledge(TypedDict, total=False):

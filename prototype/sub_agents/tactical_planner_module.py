@@ -81,6 +81,8 @@ IF tech details are discovered but endpoints/parameters are unchecked
 IF no ports are found open or all discovery is complete
 → Finish phase.
 
+IF a background is running then dispactch the approriate agent to check its status.
+
 Forbidden — HARD STOPS, no exceptions
 - NO injection payloads of any kind: no XSS, SQLi, template injection, command injection,
   path traversal, or parameter fuzzing. This means no <script>, alert(), ', ", --, ;, ../
@@ -236,9 +238,9 @@ AGENTS AVAILABLE THIS PHASE:
 {GLOBAL_RULES}
 {nudge_section}
 {playbook}
-TASK DESCRIPTION FORMAT: Always include the current phase name at the start of
-every task_description so agents can enforce their own phase lock. Example:
-  "[recon] Fetch headers from http://10.0.0.1:8080/ — GET only."
+TASK DESCRIPTION FORMAT:
+1. Always include the current phase name at the start of every task_description so agents can enforce their own phase lock. Example: "[recon] ..."
+2. ALWAYS explicitly include the target IP, hostname, URL, or link in every single task_description, regardless of whether it is an independent or dependent task. NEVER write generic task descriptions without the specific target details (e.g. do NOT write "Scan open ports", write "Scan open ports on 10.48.152.206").
 
 OUTPUT FORMAT:
 """ + tactical_parser.get_format_instructions()
@@ -485,24 +487,30 @@ Extract only NEW findings not already in the knowledge graph above.
 
         # 2. Dynamic attack_analysis coverage generation based on discovered surface
         # Dynamic check for auth.login_testing
-        for url in accumulated.get("endpoints", {}).keys():
-            if any(x in url.lower() for x in ["login", "signin", "auth", "session"]):
-                from prototype.sub_agents.schemas import CoverageKeys
-                if CoverageKeys.AUTH_LOGIN not in accumulated["coverage"]["attack_analysis"]:
-                    accumulated["coverage"]["attack_analysis"][CoverageKeys.AUTH_LOGIN] = {"required": True, "completed": False}
-                    logger.info(f"[extractor] Dynamically registered check: {CoverageKeys.AUTH_LOGIN}")
+        endpoints_data = accumulated.get("endpoints_dict") or {}
+        if isinstance(endpoints_data, dict):
+            for url in endpoints_data.keys():
+                if any(x in url.lower() for x in ["login", "signin", "auth", "session"]):
+                    from prototype.sub_agents.schemas import CoverageKeys
+                    if CoverageKeys.AUTH_LOGIN not in accumulated["coverage"]["attack_analysis"]:
+                        accumulated["coverage"]["attack_analysis"][CoverageKeys.AUTH_LOGIN] = {"required": True, "completed": False}
+                        logger.info(f"[extractor] Dynamically registered check: {CoverageKeys.AUTH_LOGIN}")
 
         # Dynamic checks for IDOR and XSS based on inputs
-        for val in accumulated.get("inputs", {}).values():
-            param = val.get("param", "").lower()
-            from prototype.sub_agents.schemas import CoverageKeys
-            if any(x in param for x in ["id", "uid", "user", "account", "uuid"]):
-                if CoverageKeys.IDOR_NUMERIC not in accumulated["coverage"]["attack_analysis"]:
-                    accumulated["coverage"]["attack_analysis"][CoverageKeys.IDOR_NUMERIC] = {"required": True, "completed": False}
-                    logger.info(f"[extractor] Dynamically registered check: {CoverageKeys.IDOR_NUMERIC}")
-            if CoverageKeys.DOM_XSS not in accumulated["coverage"]["attack_analysis"]:
-                accumulated["coverage"]["attack_analysis"][CoverageKeys.DOM_XSS] = {"required": True, "completed": False}
-                logger.info(f"[extractor] Dynamically registered check: {CoverageKeys.DOM_XSS}")
+        inputs_data = accumulated.get("inputs") or {}
+        if isinstance(inputs_data, dict):
+            for val in inputs_data.values():
+                if not isinstance(val, dict):
+                    continue
+                param = val.get("param", "").lower()
+                from prototype.sub_agents.schemas import CoverageKeys
+                if any(x in param for x in ["id", "uid", "user", "account", "uuid"]):
+                    if CoverageKeys.IDOR_NUMERIC not in accumulated["coverage"]["attack_analysis"]:
+                        accumulated["coverage"]["attack_analysis"][CoverageKeys.IDOR_NUMERIC] = {"required": True, "completed": False}
+                        logger.info(f"[extractor] Dynamically registered check: {CoverageKeys.IDOR_NUMERIC}")
+                if CoverageKeys.DOM_XSS not in accumulated["coverage"]["attack_analysis"]:
+                    accumulated["coverage"]["attack_analysis"][CoverageKeys.DOM_XSS] = {"required": True, "completed": False}
+                    logger.info(f"[extractor] Dynamically registered check: {CoverageKeys.DOM_XSS}")
 
         # Check for meaningful progress
         base_kb = state.get("knowledge", void_knowledge())

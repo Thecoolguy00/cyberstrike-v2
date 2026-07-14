@@ -7,6 +7,7 @@ llm_models:
   tactical_planner: deepseek_v4_pro_openrouter
   tactical_extractor: deepseek_v4_flash_openrouter
   vuln_advisor: deepseek_v4_flash_openrouter
+  plan_reviewer: deepseek_v4_flash_openrouter
   python_req_a: deepseek_v4_pro_openrouter
   nmap_a: deepseek_v4_flash_openrouter
   xss_a: deepseek_v4_flash_openrouter

@@ -20,7 +20,7 @@ from prototype.sub_agents.schemas import ReviewerOutput, MasterState, void_knowl
 logger = dc_logger.LoggerAdap(dc_logger.get_logger(__name__))
 load_dotenv()
 
-reviewer_llm = LLMHelper.get_llm_for_service("vuln_advisor") # re-use configured service key
+reviewer_llm = LLMHelper.get_llm_for_service("plan_reviewer")
 reviewer_parser = PydanticOutputParser(pydantic_object=ReviewerOutput)
 
 REVIEWER_SYSTEM_PROMPT = """You are the Plan Reviewer for an automated web penetration testing framework.
@@ -31,9 +31,9 @@ You must return the revised task list using the exact structure specified in the
 CONSTRAINTS — READ CAREFULLY:
 1. You may ONLY perform three operations on the task list:
    - DELETE: Remove tasks that are illegal in the active phase, or redundant.
-   - APPEND: Append ONLY tasks that directly satisfy uncovered coverage entries in the coverage matrix (from kb.coverage). You are strictly forbidden from inventing new work or types of testing outside of these coverage entries.
+   - APPEND: Append ONLY tasks that directly satisfy uncovered coverage entries in the coverage matrix (from kb.coverage). You are strictly forbidden from inventing new work or types of testing outside of these coverage entries. You MUST explicitly include the target IP, hostname, URL, or link in the task description of any tasks you append.
    - REORDER: Sort tasks by execution priority.
-2. You are strictly FORBIDDEN from rewriting or editing any task description, changing task parameters, or swapping tools. If you retain a task, keep its "task_description", "task_id", and "agent" exactly identical to the draft.
+2. You are strictly FORBIDDEN from rewriting or editing any task description, changing task parameters, or swapping tools. If you retain a task, keep its "task_description", "task_id", and "agent" exactly identical to the draft. If a draft task has a description missing its target, you may delete it so the planner regenerates it correctly, but do not edit its description text.
 3. Set status to "approved" if no changes were needed, or "edited" if you made deletions, appends, or reordering.
 
 PHASE CONSTRAINTS:
@@ -57,11 +57,15 @@ def _build_user_prompt(state: MasterState) -> str:
     phase_objective = state.get("phase_objective", "")
     knowledge = state.get("knowledge", void_knowledge())
     draft_plan = state.get("plan", [])
+    query = state.get("query", "")
     
     # Extract only the coverage matrix and relevant facts from knowledge
     coverage = knowledge.get("coverage", {})
     
-    return f"""CURRENT PHASE: {current_phase}
+    return f"""ORIGINAL OBJECTIVE:
+{query}
+
+CURRENT PHASE: {current_phase}
 PHASE OBJECTIVE: {phase_objective}
 
 DRAFT PLAN FROM TACTICAL PLANNER:
@@ -72,7 +76,7 @@ CURRENT COVERAGE STATUS:
 
 Review the draft plan above. Modify it according to the reviewer guidelines:
 1. Delete tasks that violate the phase boundaries (e.g. no injection in recon).
-2. Append tasks ONLY if they satisfy required coverage items that are not completed.
+2. Append tasks ONLY if they satisfy required coverage items that are not completed. You MUST explicitly include the target IP, hostname, URL, or link in the task description of any tasks you append.
 3. Reorder tasks to put CVE checks and high-priority tasks first.
 4. Keep all retained task descriptions exactly identical to the draft.
 """

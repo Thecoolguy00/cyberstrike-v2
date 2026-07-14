@@ -99,13 +99,24 @@ async def execute_plan_parallel(plan: List[dict], verbose: bool = True) -> List[
         async def _run_one(task: dict) -> Dict[str, str]:
             agent = task["agent"]
             desc  = task["task_description"]
+            
+            # Inject dependency outputs to provide target/results context
+            deps = task.get("depends_on", [])
+            if deps:
+                dep_context = []
+                for dep_id in deps:
+                    if dep_id in completed:
+                        dep_context.append(f"Result of '{dep_id}': {completed[dep_id]}")
+                if dep_context:
+                    desc = desc + "\n\nContext from prerequisites:\n" + "\n".join(dep_context)
+            
             status = "SUCCESS"
             if agent not in AGENT_MAP:
                 result = f"Unknown agent: {agent}"
                 status = "FAILED"
             else:
                 if verbose:
-                    logger.info(f"  → [{agent}] {desc[:200]}")
+                    logger.info(f"  -> [{agent}] {desc[:200]}")
                 try:
                     result = await _run_agent(AGENT_MAP[agent], desc)
                     if "execution failed" in result.lower():
@@ -114,7 +125,7 @@ async def execute_plan_parallel(plan: List[dict], verbose: bool = True) -> List[
                     result = f"Agent execution failed: {str(e)}"
                     status = "FAILED"
                 if verbose:
-                    logger.info(f"  ← [{agent}] {result[:200]}")
+                    logger.info(f"  <- [{agent}] {result[:200]}")
             return {
                 "agent": agent,
                 "task": desc,
