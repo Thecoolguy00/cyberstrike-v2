@@ -39,7 +39,10 @@ class LLMHelper:
     
     @staticmethod
     @lru_cache(maxsize=10)
-    def get_llm_for_service(service_name: str = None) -> BaseChatModel:
+    def get_llm_for_service(
+        service_name: str = None,
+        reasoning_effort: str | None = None,
+    ) -> BaseChatModel:
         """
         Get an LLM instance for a specific service or use the default.
         Results are cached for better performance.
@@ -50,10 +53,6 @@ class LLMHelper:
         
         Returns:
             BaseChatModel: A LangChain chat model instance ready to use.
-        
-        Examples:
-            >>> llm = LLMHelper.get_llm_for_service("account_priorities")
-            >>> llm = LLMHelper.get_llm_for_service()  # Uses default
         """
         llm_config = LLMHelper._get_llm_config()
         
@@ -61,15 +60,21 @@ class LLMHelper:
         if service_name and service_name in llm_config:
             model_name = llm_config[service_name]
         else:
-            model_name = llm_config.get("default_model", "gemini_2_5_flash")
+            model_name = llm_config.get("default_model", "deepseek_v4_flash_openrouter")
         
         # Get the LLM wrapper from factory and return the actual LLM
-        llm_wrapper: LLMInterface = LlmFactory.get_llm(model_name)
+        llm_wrapper: LLMInterface = LlmFactory.get_llm(
+            model_name,
+            reasoning_effort=reasoning_effort,
+        )
         return llm_wrapper.get_llm()
     
     @staticmethod
     @lru_cache(maxsize=10)
-    def get_llm_wrapper_for_service(service_name: str = None) -> LLMInterface:
+    def get_llm_wrapper_for_service(
+        service_name: str = None,
+        reasoning_effort: str | None = None,
+    ) -> LLMInterface:
         """
         Get an LLM wrapper (interface) for a specific service.
         Results are cached for better performance.
@@ -86,9 +91,12 @@ class LLMHelper:
         if service_name and service_name in llm_config:
             model_name = llm_config[service_name]
         else:
-            model_name = llm_config.get("default_model", "gemini_2_5_flash")
+            model_name = llm_config.get("default_model", "deepseek_v4_flash_openrouter")
         
-        return LlmFactory.get_llm(model_name)
+        return LlmFactory.get_llm(
+            model_name,
+            reasoning_effort=reasoning_effort,
+        )
     
     @staticmethod
     def get_default_model_name() -> str:
@@ -99,7 +107,7 @@ class LLMHelper:
             str: The default model name.
         """
         llm_config = LLMHelper._get_llm_config()
-        return llm_config.get("default_model", "gemini_2_5_flash")
+        return llm_config.get("default_model", "deepseek_v4_flash_openrouter")
     
     @staticmethod
     @retry(

@@ -48,14 +48,12 @@ def get_strategic_system_prompt() -> str:
 PHASES (typically in order, but can loop back if new attack surface is discovered):
 {phases_block}
 
-PHASE DESCRIPTIONS:
-  - RECON: identify open ports, services, web technology stack
-  - ENUMERATION: discover endpoints, files, directories, parameters on confirmed web services
-  - VULN_ANALYSIS: probe discovered input points for vulnerabilities
-  - EXPLOITATION: confirm/exploit identified vulnerabilities for impact
+PHASE_DESCRIPTIONS:
+  - RECON: identify open ports, services, web technology stack, endpoints, APIs, JS, forms, and parameters. Nothing active.
+  - ATTACK_ANALYSIS: Validate discovered attack surfaces using passive or active techniques as appropriate (XSS, SQLi, IDOR, auth, headers, CVEs, PoCs).
   - REPORTING: synthesize ALL findings into a structured final pentest report (no agent execution)
 
-PHASE TRANSITION RULES
+PHASE_TRANSITION RULES
 The tactical planner signals phase completion by setting a non-empty
 "phase_summary" — you will see this as the most-recently-completed phase's
 summary. Use these rules to decide what happens next:
@@ -65,17 +63,13 @@ summary. Use these rules to decide what happens next:
 
 2. LOOP BACK: When the knowledge graph reveals NEW, unexplored attack
    surface that was NOT present when the earlier phase ran (e.g. a new
-   vhost, a new port, a new web service discovered during exploitation),
-   loop back to the earliest phase needed to explore that surface.
-   Always explain in "thinking" exactly what new surface triggered the loop.
+   vhost, a new port, a new web service), loop back to the earliest phase
+   needed to explore that surface. Always explain in "thinking" exactly
+   what new surface triggered the loop.
 
 3. SKIP: Skip phases when their prerequisites are clearly absent:
-   - Skip ENUMERATION if recon found NO web services at all (only
-     non-HTTP ports like SSH, FTP with no web UI). Go straight to
-     VULN_ANALYSIS or EXPLOITATION for non-web services, or REPORTING
-     if there is nothing to test.
-   - Skip EXPLOITATION if VULN_ANALYSIS found zero potential
-     vulnerabilities — go straight to REPORTING.
+   - Skip ATTACK_ANALYSIS if recon found absolutely no ports, web services,
+     or endpoints to test. Go straight to REPORTING.
    - NEVER skip RECON (it is always the first phase).
    - NEVER skip REPORTING (it is always the final phase).
 
@@ -228,11 +222,26 @@ def strategic_planner(state: MasterState) -> MasterState:
 
     try:
         response = strategic_llm.invoke(messages)
+        # Extract native thinking
+        from prototype.sub_agents.helper import extract_native_thinking
+        native_thinking = extract_native_thinking(response)
+
+        # Fallback to checking if model still generated thinking inside JSON block
+        if not native_thinking:
+            try:
+                json_data = json.loads(extract_json_block(response.content))
+                native_thinking = json_data.get("thinking", "")
+            except Exception:
+                pass
+
         decision = strategic_parser.parse(extract_json_block(response.content))
 
         if decision.current_phase not in PHASES:
             logger.warning(f"[strategic] Invalid phase '{decision.current_phase}', defaulting to 'reporting'")
             decision.current_phase = "reporting"
+
+        metrics = state.get("metrics", {})
+        metrics["strategic_invocations"] = metrics.get("strategic_invocations", 0) + 1
 
         return {
             **state,
@@ -240,7 +249,8 @@ def strategic_planner(state: MasterState) -> MasterState:
             "phase_objective": decision.phase_objective,
             "final_answer": decision.final_answer,
             "phase_iteration_count": 0,
-            "thinking": decision.thinking,
+            "thinking": native_thinking,
+            "metrics": metrics,
         }
 
     except Exception as e:

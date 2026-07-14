@@ -65,7 +65,7 @@ RECON_PLAYBOOK = """
 RECON
 
 Objective
-Discover reachable services and perform initial exploit research on identified technologies.
+Discover ports, services, endpoints, JS, APIs, forms, and parameters. Nothing active.
 
 State
 
@@ -75,94 +75,39 @@ IF knowledge.open_ports is empty
 IF confirmed services or open ports exist but are not fingerprinted
 → Fingerprint them (nmap_a for version/banner, http_a GET/HEAD for HTTP confirmation only).
 
-IF technology version or software details are discovered
-→ Run exploit intelligence (intel_a) to check for known vulnerabilities and public exploits.
+IF tech details are discovered but endpoints/parameters are unchecked
+→ Discover endpoints, JS files, and parameters (http_a, ferox_a passive/wordlist scans).
 
-IF no ports are found open even after a full port scan
+IF no ports are found open or all discovery is complete
 → Finish phase.
+
+IF a background is running then dispactch the approriate agent to check its status.
 
 Forbidden — HARD STOPS, no exceptions
 - NO injection payloads of any kind: no XSS, SQLi, template injection, command injection,
   path traversal, or parameter fuzzing. This means no <script>, alert(), ', ", --, ;, ../
   in any request parameter — even "just to check reflection".
-- NO endpoint enumeration (no ferox_a, no wordlist scanning, no directory brute-force).
-- NO vulnerability testing of any kind. Exploit intelligence (intel_a) looks up public
-  databases — it does NOT test the live target.
-- http_a in this phase: GET and HEAD requests only, to confirm a port serves HTTP.
+- NO vulnerability testing or active verification of any kind.
+- http_a in this phase: GET and HEAD requests only, to confirm a port/endpoint serves content.
   Do NOT fuzz, probe, or send payloads.
 """
 
-ENUMERATION_PLAYBOOK = """
-ENUMERATION
+ATTACK_ANALYSIS_PLAYBOOK = """
+ATTACK ANALYSIS
 
 Objective
-Map web attack surface: find endpoints, parameters, forms, and allowed methods.
-
-State
-
-IF knowledge.web_services is empty
-→ Finish phase immediately (nothing to enumerate).
-
-IF endpoints are incomplete
-→ Enumerate endpoints (ferox_a wordlist scan, http_a OPTIONS/PROPFIND).
-
-IF input_points are incomplete
-→ Inspect discovered endpoints for parameters and forms (http_a GET only).
-
-IF attack surface is mapped
-→ Finish phase.
-
-Forbidden — HARD STOPS, no exceptions
-- NO injection payloads of any kind: no XSS, SQLi, template injection, command injection,
-  path traversal, or reflection probing. This means no <script>, alert(), ', ", --, ;, ../
-  in any request parameter — even "just to see if it reflects".
-- NO vulnerability testing. Discovery only.
-- NO new port scanning or service fingerprinting (that was recon).
-- http_a in this phase: GET, HEAD, OPTIONS, PROPFIND only.
-  Do NOT send POST/PUT/PATCH/DELETE with payloads.
-  Do NOT fuzz parameter values.
-"""
-
-VULN_ANALYSIS_PLAYBOOK = """
-VULNERABILITY ANALYSIS
-
-Objective
-Identify vulnerabilities.
+Validate discovered attack surfaces (XSS, SQLi, IDOR, auth, headers, CVEs, PoCs) using passive or active techniques as appropriate.
 
 Priority
 
 1. User-requested vulnerability type (check original query).
-2. Exploit intelligence research for all newly discovered software versions, platforms, or custom services to check for known vulnerabilities and public exploits.
+2. Test known CVEs and vulnerabilities identified in the exploit intelligence list.
 3. Input-based testing (XSS, SQLi, HTMLi, open redirect, IDOR).
 4. Endpoint-based testing (backup files, source disclosure, directory listing).
 5. Configuration checks (CORS, clickjacking, cookie flags, secret leaks).
 
 Forbidden
-- No exploitation.
-- No new enumeration.
-- No reconnaissance.
-"""
-
-EXPLOITATION_PLAYBOOK = """
-EXPLOITATION
-
-Objective
-Confirm findings.
-
-State
-
-IF no findings
-→ Finish phase.
-
-IF findings remain unconfirmed
-→ Confirm them with proof-of-concept.
-
-IF multiple findings relate (same endpoint, session, user)
-→ Attempt chaining.
-
-Forbidden
 - No destructive actions.
-- No new discovery.
 """
 
 REPORTING_PLAYBOOK = """
@@ -177,11 +122,9 @@ Return:
 """
 
 TACTICAL_PHASE_PLAYBOOKS: Dict[str, str] = {
-    "recon":         RECON_PLAYBOOK,
-    "enumeration":   ENUMERATION_PLAYBOOK,
-    "vuln_analysis": VULN_ANALYSIS_PLAYBOOK,
-    "exploitation":  EXPLOITATION_PLAYBOOK,
-    "reporting":     REPORTING_PLAYBOOK,
+    "recon":           RECON_PLAYBOOK,
+    "attack_analysis": ATTACK_ANALYSIS_PLAYBOOK,
+    "reporting":       REPORTING_PLAYBOOK,
 }
 
 
@@ -295,9 +238,9 @@ AGENTS AVAILABLE THIS PHASE:
 {GLOBAL_RULES}
 {nudge_section}
 {playbook}
-TASK DESCRIPTION FORMAT: Always include the current phase name at the start of
-every task_description so agents can enforce their own phase lock. Example:
-  "[recon] Fetch headers from http://10.0.0.1:8080/ — GET only."
+TASK DESCRIPTION FORMAT:
+1. Always include the current phase name at the start of every task_description so agents can enforce their own phase lock. Example: "[recon] ..."
+2. ALWAYS explicitly include the target IP, hostname, URL, or link in every single task_description, regardless of whether it is an independent or dependent task. NEVER write generic task descriptions without the specific target details (e.g. do NOT write "Scan open ports", write "Scan open ports on 10.48.152.206").
 
 OUTPUT FORMAT:
 """ + tactical_parser.get_format_instructions()
@@ -514,6 +457,12 @@ Extract only NEW findings not already in the knowledge graph above.
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt),
         ])
+        # Extract native thinking
+        from prototype.sub_agents.helper import extract_native_thinking
+        native_thinking = extract_native_thinking(response)
+        if native_thinking:
+            logger.info(f"[extractor] Native Thinking: {native_thinking}")
+
         parsed: TacticalExtraction = extractor_parser.parse(extract_json_block(response.content))
 
         accumulated = merge_knowledge(
@@ -521,25 +470,110 @@ Extract only NEW findings not already in the knowledge graph above.
             parsed.extracted_knowledge,
         )
 
-        logger.info(
-            f"[extractor] phase={phase} "
-            f"new_ports={len(parsed.extracted_knowledge.get('open_ports',[]))} "
-            f"new_services={len(parsed.extracted_knowledge.get('web_services',[]))} "
-            f"new_endpoints={len(parsed.extracted_knowledge.get('endpoints',[]))} "
-            f"new_findings={len(parsed.extracted_knowledge.get('findings',[]))} "
-            f"new_cves={len(parsed.extracted_knowledge.get('known_cves',[]))}"
-        )
+        # Ensure coverage dictionaries exist
+        if "coverage" not in accumulated or not accumulated["coverage"]:
+            accumulated["coverage"] = void_knowledge()["coverage"]
+        if "attack_analysis" not in accumulated["coverage"]:
+            accumulated["coverage"]["attack_analysis"] = {}
+
+        # 1. Update coverage from successful task executions
+        last_results = state.get("last_execution_results", [])
+        for res in last_results:
+            if res.get("status") == "SUCCESS" and res.get("coverage_keys"):
+                for key in res["coverage_keys"]:
+                    if phase in accumulated["coverage"] and key in accumulated["coverage"][phase]:
+                        accumulated["coverage"][phase][key]["completed"] = True
+                        logger.info(f"[extractor] Marked coverage completed: {phase}.{key}")
+
+        # 2. Dynamic attack_analysis coverage generation based on discovered surface
+        # Dynamic check for auth.login_testing
+        endpoints_data = accumulated.get("endpoints_dict") or {}
+        if isinstance(endpoints_data, dict):
+            for url in endpoints_data.keys():
+                if any(x in url.lower() for x in ["login", "signin", "auth", "session"]):
+                    from prototype.sub_agents.schemas import CoverageKeys
+                    if CoverageKeys.AUTH_LOGIN not in accumulated["coverage"]["attack_analysis"]:
+                        accumulated["coverage"]["attack_analysis"][CoverageKeys.AUTH_LOGIN] = {"required": True, "completed": False}
+                        logger.info(f"[extractor] Dynamically registered check: {CoverageKeys.AUTH_LOGIN}")
+
+        # Dynamic checks for IDOR and XSS based on inputs
+        inputs_data = accumulated.get("inputs") or {}
+        if isinstance(inputs_data, dict):
+            for val in inputs_data.values():
+                if not isinstance(val, dict):
+                    continue
+                param = val.get("param", "").lower()
+                from prototype.sub_agents.schemas import CoverageKeys
+                if any(x in param for x in ["id", "uid", "user", "account", "uuid"]):
+                    if CoverageKeys.IDOR_NUMERIC not in accumulated["coverage"]["attack_analysis"]:
+                        accumulated["coverage"]["attack_analysis"][CoverageKeys.IDOR_NUMERIC] = {"required": True, "completed": False}
+                        logger.info(f"[extractor] Dynamically registered check: {CoverageKeys.IDOR_NUMERIC}")
+                if CoverageKeys.DOM_XSS not in accumulated["coverage"]["attack_analysis"]:
+                    accumulated["coverage"]["attack_analysis"][CoverageKeys.DOM_XSS] = {"required": True, "completed": False}
+                    logger.info(f"[extractor] Dynamically registered check: {CoverageKeys.DOM_XSS}")
+
+        # Check for meaningful progress
+        base_kb = state.get("knowledge", void_knowledge())
+        
+        def get_kb_size(kb):
+            return (
+                len(kb.get("ports", {})) +
+                len(kb.get("services", {})) +
+                len(kb.get("endpoints_dict", {})) +
+                len(kb.get("inputs", {})) +
+                len(kb.get("findings_dict", {})) +
+                len(kb.get("exploit_intelligence", {}))
+            )
+        
+        def get_completed_coverage(kb):
+            count = 0
+            for p in ["recon", "attack_analysis", "reporting"]:
+                for check_id, check_val in kb.get("coverage", {}).get(p, {}).items():
+                    if check_val.get("completed"):
+                        count += 1
+            return count
+
+        base_size = get_kb_size(base_kb)
+        accum_size = get_kb_size(accumulated)
+        base_cov = get_completed_coverage(base_kb)
+        accum_cov = get_completed_coverage(accumulated)
+
+        metrics = state.get("metrics", {})
+        stuck_cycle_count = state.get("stuck_cycle_count", 0)
+        if accum_size > base_size or accum_cov > base_cov:
+            logger.info(f"[extractor] Meaningful progress made! Resetting stuck cycle count. (Size: {base_size}->{accum_size}, Cov: {base_cov}->{accum_cov})")
+            stuck_cycle_count = 0
+        else:
+            stuck_cycle_count += 1
+            metrics["stuck_events"] = metrics.get("stuck_events", 0) + 1
+            logger.warning(f"[extractor] No meaningful progress. Stuck cycle count: {stuck_cycle_count}/3")
+
+        # Update coverage_completed metric
+        total_completed = 0
+        for p in ["recon", "attack_analysis", "reporting"]:
+            for check_id, check_val in accumulated.get("coverage", {}).get(p, {}).items():
+                if check_val.get("completed"):
+                    total_completed += 1
+        metrics["coverage_completed"] = total_completed
+
+        # Sync legacy lists from dict changes
+        from prototype.sub_agents.schemas import _sync_knowledge_legacy
+        accumulated = _sync_knowledge_legacy(accumulated)
 
         return {
             "_extracted_knowledge": accumulated,
+            "stuck_cycle_count": stuck_cycle_count,
             "last_node": "tactical_extractor",
+            "metrics": metrics,
         }
 
     except Exception as e:
         logger.error(f"[extractor] Failed: {e}")
         logger.info(f"Raw response: {response.content if 'response' in locals() else 'N/A'}")
-        # Preserve existing _extracted_knowledge on failure — never wipe it
-        return {"last_node": "tactical_extractor"}
+        return {
+            "last_node": "tactical_extractor",
+            "stuck_cycle_count": state.get("stuck_cycle_count", 0)
+        }
 
 
 def tactical_planner(state: MasterState) -> dict:
@@ -568,10 +602,97 @@ def tactical_planner(state: MasterState) -> dict:
 
     try:
         response = tactical_llm.invoke(messages)
+        # Extract native thinking
+        from prototype.sub_agents.helper import extract_native_thinking
+        native_thinking = extract_native_thinking(response)
+
+        # Fallback to checking if model still generated thinking inside JSON block
+        if not native_thinking:
+            try:
+                json_data = json.loads(extract_json_block(response.content))
+                native_thinking = json_data.get("thinking", "")
+            except Exception:
+                pass
+
         parsed: TacticalPlan = tactical_parser.parse(extract_json_block(response.content))
 
         allowed_agents = PHASE_AGENT_MAP.get(phase, [])
         validated_plan = [t.model_dump() for t in parsed.plan if t.agent in allowed_agents]
+        
+        # Injects live cycle-level discoveries into the committed knowledge base
+        knowledge = merge_knowledge(
+            state.get("knowledge", void_knowledge()),
+            state.get("_extracted_knowledge", void_knowledge()),
+        )
+
+        # Injected Rule 1: Exploit Intel scheduling & duplicate checks
+        bg_tasks = knowledge.get("background_tasks", {})
+        running_or_done_tasks = set(bg_tasks.keys())
+        for ex in state.get("execution_history", []):
+            if ex.get("task"):
+                running_or_done_tasks.add(ex["task"])
+
+        injected_tasks = []
+        for s_name, val in knowledge.get("services", {}).items():
+            version = val.get("version", "unknown")
+            if version != "unknown":
+                tech_ver = f"{s_name} {version}"
+                
+                # Check duplicate lookups
+                intel_task_desc = f"Research {s_name} {version} for known vulnerabilities"
+                if tech_ver not in knowledge.get("exploit_intelligence", {}) and intel_task_desc not in running_or_done_tasks:
+                    logger.info(f"[tactical] Auto-scheduling exploit intel lookup for: {tech_ver}")
+                    injected_tasks.append({
+                        "agent": "intel_a",
+                        "task_description": f"[{phase}] {intel_task_desc}",
+                        "task_id": f"intel_auto_{s_name}_{version}".replace(".", "_"),
+                        "depends_on": [],
+                        "coverage_keys": []
+                    })
+                    running_or_done_tasks.add(intel_task_desc)
+
+        # Injected Rule 2: CVE validation tasks & duplicate checks
+        for s_name, intel in knowledge.get("exploit_intelligence", {}).items():
+            cve_id = intel.get("cve")
+            if cve_id:
+                # Find if a verification task has already been scheduled or run
+                cve_task_desc = f"Verify vulnerability {cve_id} on service {s_name}"
+                if cve_task_desc not in running_or_done_tasks:
+                    logger.info(f"[tactical] Auto-scheduling CVE verification for: {cve_id}")
+                    # Use appropriate test agent or python/http validation agent
+                    target_agent = "python_a" if phase == "attack_analysis" else "http_a"
+                    injected_tasks.append({
+                        "agent": target_agent,
+                        "task_description": f"[{phase}] {cve_task_desc}",
+                        "task_id": f"cve_verify_{cve_id.replace('-', '_')}",
+                        "depends_on": [],
+                        "coverage_keys": []
+                    })
+                    running_or_done_tasks.add(cve_task_desc)
+
+        # Prepend auto-scheduled tasks
+        validated_plan = injected_tasks + validated_plan
+
+        # De-duplicate any broad task description duplicates inside the plan
+        deduped_plan = []
+        seen_descs = set()
+        duplicates_removed_count = 0
+        for t in validated_plan:
+            desc = t["task_description"]
+            if desc not in seen_descs and desc not in running_or_done_tasks:
+                deduped_plan.append(t)
+                seen_descs.add(desc)
+            else:
+                logger.info(f"[tactical] Dropped duplicate or already-running task: {desc}")
+                duplicates_removed_count += 1
+
+        # Track metrics
+        metrics = state.get("metrics", {})
+        metrics["cycles"] = metrics.get("cycles", 0) + 1
+        intel_count = sum(1 for t in deduped_plan if t.get("agent") == "intel_a")
+        metrics["intel_tasks"] = metrics.get("intel_tasks", 0) + intel_count
+        metrics["duplicate_tasks_removed"] = metrics.get("duplicate_tasks_removed", 0) + duplicates_removed_count
+
         dropped = [t.agent for t in parsed.plan if t.agent not in allowed_agents]
         if dropped:
             logger.warning(f"[tactical] Dropped out-of-scope agents for '{phase}': {dropped}")
@@ -579,17 +700,18 @@ def tactical_planner(state: MasterState) -> dict:
         # When tactical signals phase/focus done (empty plan), mark the current
         # nudge's vuln_id as checked so advisor never re-suggests it.
         newly_checked: List[str] = []
-        if not validated_plan and nudge and nudge.vuln_id and nudge.priority != "skip":
+        if not deduped_plan and nudge and nudge.vuln_id and nudge.priority != "skip":
             newly_checked = [nudge.vuln_id]
             logger.info(f"[tactical] Marking '{nudge.vuln_id}' as checked")
 
         return {
             **state,
-            "plan":                  validated_plan,
+            "plan":                  deduped_plan,
             "phase_iteration_count": state.get("phase_iteration_count", 0) + 1,
             "_phase_summary":        parsed.phase_summary,
-            "thinking":              parsed.thinking,
+            "thinking":              native_thinking,
             "checked_vulns":         newly_checked,
+            "metrics":               metrics,
         }
 
     except Exception as e:

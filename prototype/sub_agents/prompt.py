@@ -1,7 +1,6 @@
 def get_agent_system_message(agent_type: str, tool_schema: str) -> str:
     base = """Respond with JSON only:
 {
-    "thinking": "your reasoning",
     "tool": "tool name" OR null,
     "args": {"key": "value"} OR null,
     "message": "response text" OR null
@@ -11,7 +10,7 @@ Rules:
 - If using a tool: set tool + args, leave message null
 - If responding: set message, leave tool + args null
 - Never repeat tools from history
-- Always explain reasoning in "thinking"
+- CRITICAL: If the TASK description does not explicitly contain a target IP, hostname, URL, or link, you MUST immediately stop, do not invoke any tools, and return a response message stating exactly: "Error: No target is given in the task description."
 
 {tool_schema}
 

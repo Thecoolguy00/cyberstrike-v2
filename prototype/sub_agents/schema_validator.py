@@ -27,7 +27,6 @@ def extract_text(msg) -> str:
 
 class AgentResponse(BaseModel):
     """Unified agent response schema."""
-    thinking: str = Field(..., description="Step-by-step reasoning")
     tool: Optional[str] = Field(None, description="Tool name or null")
     args: Optional[Dict[str, Any]] = Field(None, description="Tool arguments or null")
     message: Optional[str] = Field(None, description="Response text or null")
@@ -113,13 +112,29 @@ def invoke_and_validate(llm, messages):
     
     # Parse and validate
     try:
-        parsed = parser.parse(raw_data)
+        from prototype.sub_agents.helper import extract_json_block
+        clean_data = extract_json_block(raw_data)
+        parsed = parser.parse(clean_data)
     except Exception as e:
         logger.error(f"Parse error: {e}\nRaw: {raw_data}")
         raise
     
-    # Replace content with validated JSON
-    response.content = parsed.model_dump_json()
+    # Extract native thinking
+    from prototype.sub_agents.helper import extract_native_thinking
+    native_thinking = extract_native_thinking(response)
+
+    # Fallback to checking if model still generated thinking inside JSON block
+    if not native_thinking:
+        try:
+            json_data = json.loads(clean_data)
+            native_thinking = json_data.get("thinking", "")
+        except Exception:
+            pass
+
+    # Replace content with validated JSON including native thinking
+    response_dict = parsed.model_dump()
+    response_dict["thinking"] = native_thinking
+    response.content = json.dumps(response_dict)
     
     # Log parsed fields for debugging
     logger.info(
