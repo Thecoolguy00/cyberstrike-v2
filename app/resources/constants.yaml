@@ -1,29 +1,24 @@
-
 llm_models:
   # Default model for all services
-  default_model: openrouter_deepseek_v4_flash"
+  default_model: deepseek_v4_flash_openrouter
   
   # agent-specific models (optional overrides)
-  strategic_planner: openrouter_deepseek_v4_flash
-  tactical_planner: openrouter_deepseek_v4_pro
-  vuln_advisor: openrouter_deepseek_v4_flash
-  python_req_a: "openrouter_deepseek_v4_pro"
-  nmap_a: "openrouter_deepseek_v4_flash"
-  xss_a: "openrouter_deepseek_v4_flash"
-  ferox_a: "openrouter_deepseek_v4_flash"
-  http_a: openrouter_deepseek_v4_flash
-  intel_a: openrouter_deepseek_v4_flash
+  strategic_planner: deepseek_v4_flash_openrouter
+  tactical_planner: deepseek_v4_pro_openrouter
+  tactical_extractor: deepseek_v4_flash_openrouter
+  vuln_advisor: deepseek_v4_flash_openrouter
+  python_req_a: deepseek_v4_pro_openrouter
+  nmap_a: deepseek_v4_flash_openrouter
+  xss_a: deepseek_v4_flash_openrouter
+  ferox_a: deepseek_v4_flash_openrouter
+  http_a: deepseek_v4_flash_openrouter
+  intel_a: deepseek_v4_flash_openrouter
 
-#available agents
-#moonshot_kimi_k2_instruct_0905
-#gpt-oss-120b
-#openrouter_deepseek_v4_flash
-#openrouter_deepseek_v4_pro
-#openrouter_tencent_hy3_preview
-#gemini_2_5_flash, other models, see llm_factory.py
-#llama-3.3-70b-versatile
-#mistral_large
-#mistral_medium
+# available agents:
+# gpt-oss-120b
+# deepseek_v4_flash_openrouter
+# deepseek_v4_pro_openrouter
+# tencent_hy3_preview_openrouter
 
 mongodb_config:
   db_name: "Cyberstrike_p0_DB"

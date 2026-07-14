@@ -279,7 +279,6 @@ class TacticalExtraction(BaseModel):
             "Only include entries that are genuinely new or updated."
         )
     )
-    thinking: str = Field(default="", description="Brief reasoning about what was extracted")
 
 
 class TacticalPlan(BaseModel):
@@ -298,7 +297,6 @@ class TacticalPlan(BaseModel):
         default="",
         description="Summary of this phase's findings — set ONLY when plan is empty (phase complete)"
     )
-    thinking: str = Field(default="", description="Reasoning for the current plan/decision")
 
 
 # ─── Strategic planner schemas ────────────────────────────────────────────────
@@ -308,4 +306,3 @@ class PhaseDecision(BaseModel):
     current_phase:   str = Field(..., description=f"One of: {', '.join(PHASES)}")
     phase_objective: str = Field(..., description="Specific, scoped objective for the tactical planner this phase")
     final_answer:    str = Field(default="", description="Set ONLY when entire pentest is complete")
-    thinking:        str = Field(..., description="Reasoning for this phase decision")

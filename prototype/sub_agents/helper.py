@@ -260,3 +260,51 @@ def extract_text(msg) -> str:
 
     return str(msg)
 
+
+def extract_native_thinking(response) -> str:
+    """Extract model's native thinking/reasoning process if available."""
+    # 1. Check additional_kwargs
+    if hasattr(response, "additional_kwargs") and response.additional_kwargs:
+        for key in ["reasoning_content", "reasoning", "thought", "thoughts"]:
+            if val := response.additional_kwargs.get(key):
+                if isinstance(val, str):
+                    return val
+                elif isinstance(val, dict) and "text" in val:
+                    return val["text"]
+                elif isinstance(val, dict) and "content" in val:
+                    return val["content"]
+
+    # 2. Check response_metadata
+    if hasattr(response, "response_metadata") and response.response_metadata:
+        for key in ["reasoning_content", "reasoning", "thought", "thoughts"]:
+            if val := response.response_metadata.get(key):
+                if isinstance(val, str):
+                    return val
+
+    # 3. Check content blocks
+    if hasattr(response, "content_blocks") and response.content_blocks:
+        blocks = []
+        for block in response.content_blocks:
+            if isinstance(block, dict):
+                if block.get("type") in ("reasoning", "thought"):
+                    val = block.get("reasoning") or block.get("thought")
+                    if val:
+                        blocks.append(str(val))
+        if blocks:
+            return "\n".join(blocks)
+
+    # 4. Check content list
+    if hasattr(response, "content") and isinstance(response.content, list):
+        blocks = []
+        for block in response.content:
+            if isinstance(block, dict):
+                if block.get("type") in ("reasoning", "thought", "thinking"):
+                    val = block.get("reasoning") or block.get("thought") or block.get("text")
+                    if val:
+                        blocks.append(str(val))
+        if blocks:
+            return "\n".join(blocks)
+
+    return ""
+
+

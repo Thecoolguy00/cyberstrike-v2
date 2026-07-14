@@ -228,6 +228,18 @@ def strategic_planner(state: MasterState) -> MasterState:
 
     try:
         response = strategic_llm.invoke(messages)
+        # Extract native thinking
+        from prototype.sub_agents.helper import extract_native_thinking
+        native_thinking = extract_native_thinking(response)
+
+        # Fallback to checking if model still generated thinking inside JSON block
+        if not native_thinking:
+            try:
+                json_data = json.loads(extract_json_block(response.content))
+                native_thinking = json_data.get("thinking", "")
+            except Exception:
+                pass
+
         decision = strategic_parser.parse(extract_json_block(response.content))
 
         if decision.current_phase not in PHASES:
@@ -240,7 +252,7 @@ def strategic_planner(state: MasterState) -> MasterState:
             "phase_objective": decision.phase_objective,
             "final_answer": decision.final_answer,
             "phase_iteration_count": 0,
-            "thinking": decision.thinking,
+            "thinking": native_thinking,
         }
 
     except Exception as e:

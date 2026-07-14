@@ -132,7 +132,7 @@ Identify vulnerabilities.
 Priority
 
 1. User-requested vulnerability type (check original query).
-2. Exploit intelligence research for all newly discovered software versions, platforms, or custom services to check for known vulnerabilities and public exploits.
+2. Test known CVEs and vulnerabilities identified during the recon phase (check the `known_cves` list in the knowledge graph) using `http_a` or `python_a`.
 3. Input-based testing (XSS, SQLi, HTMLi, open redirect, IDOR).
 4. Endpoint-based testing (backup files, source disclosure, directory listing).
 5. Configuration checks (CORS, clickjacking, cookie flags, secret leaks).
@@ -514,6 +514,12 @@ Extract only NEW findings not already in the knowledge graph above.
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt),
         ])
+        # Extract native thinking
+        from prototype.sub_agents.helper import extract_native_thinking
+        native_thinking = extract_native_thinking(response)
+        if native_thinking:
+            logger.info(f"[extractor] Native Thinking: {native_thinking}")
+
         parsed: TacticalExtraction = extractor_parser.parse(extract_json_block(response.content))
 
         accumulated = merge_knowledge(
@@ -568,6 +574,18 @@ def tactical_planner(state: MasterState) -> dict:
 
     try:
         response = tactical_llm.invoke(messages)
+        # Extract native thinking
+        from prototype.sub_agents.helper import extract_native_thinking
+        native_thinking = extract_native_thinking(response)
+
+        # Fallback to checking if model still generated thinking inside JSON block
+        if not native_thinking:
+            try:
+                json_data = json.loads(extract_json_block(response.content))
+                native_thinking = json_data.get("thinking", "")
+            except Exception:
+                pass
+
         parsed: TacticalPlan = tactical_parser.parse(extract_json_block(response.content))
 
         allowed_agents = PHASE_AGENT_MAP.get(phase, [])
@@ -588,7 +606,7 @@ def tactical_planner(state: MasterState) -> dict:
             "plan":                  validated_plan,
             "phase_iteration_count": state.get("phase_iteration_count", 0) + 1,
             "_phase_summary":        parsed.phase_summary,
-            "thinking":              parsed.thinking,
+            "thinking":              native_thinking,
             "checked_vulns":         newly_checked,
         }
 
