@@ -48,12 +48,14 @@ def get_strategic_system_prompt() -> str:
 PHASES (typically in order, but can loop back if new attack surface is discovered):
 {phases_block}
 
-PHASE_DESCRIPTIONS:
-  - RECON: identify open ports, services, web technology stack, endpoints, APIs, JS, forms, and parameters. Nothing active.
-  - ATTACK_ANALYSIS: Validate discovered attack surfaces using passive or active techniques as appropriate (XSS, SQLi, IDOR, auth, headers, CVEs, PoCs).
+PHASE DESCRIPTIONS:
+  - RECON: identify open ports, services, web technology stack
+  - ENUMERATION: discover endpoints, files, directories, parameters on confirmed web services
+  - VULN_ANALYSIS: probe discovered input points for vulnerabilities
+  - EXPLOITATION: confirm/exploit identified vulnerabilities for impact
   - REPORTING: synthesize ALL findings into a structured final pentest report (no agent execution)
 
-PHASE_TRANSITION RULES
+PHASE TRANSITION RULES
 The tactical planner signals phase completion by setting a non-empty
 "phase_summary" — you will see this as the most-recently-completed phase's
 summary. Use these rules to decide what happens next:
@@ -63,13 +65,17 @@ summary. Use these rules to decide what happens next:
 
 2. LOOP BACK: When the knowledge graph reveals NEW, unexplored attack
    surface that was NOT present when the earlier phase ran (e.g. a new
-   vhost, a new port, a new web service), loop back to the earliest phase
-   needed to explore that surface. Always explain in "thinking" exactly
-   what new surface triggered the loop.
+   vhost, a new port, a new web service discovered during exploitation),
+   loop back to the earliest phase needed to explore that surface.
+   Always explain your reasoning for the loop in "phase_objective".
 
 3. SKIP: Skip phases when their prerequisites are clearly absent:
-   - Skip ATTACK_ANALYSIS if recon found absolutely no ports, web services,
-     or endpoints to test. Go straight to REPORTING.
+   - Skip ENUMERATION if recon found NO web services at all (only
+     non-HTTP ports like SSH, FTP with no web UI). Go straight to
+     VULN_ANALYSIS or EXPLOITATION for non-web services, or REPORTING
+     if there is nothing to test.
+   - Skip EXPLOITATION if VULN_ANALYSIS found zero potential
+     vulnerabilities — go straight to REPORTING.
    - NEVER skip RECON (it is always the first phase).
    - NEVER skip REPORTING (it is always the final phase).
 
@@ -84,7 +90,7 @@ YOUR JOB EACH CYCLE:
    Be concrete: reference actual hosts/ports/endpoints/params from the
    knowledge graph, not generic instructions.
 4. Set "current_phase" to whichever phase you've decided on next
-5. Explain your reasoning in "thinking"
+5. Express your reasoning concisely in "phase_objective"
 
 REPORTING PHASE — FINAL ANSWER SYNTHESIS
 When you are deciding the result of a COMPLETED REPORTING phase (i.e. the
@@ -104,6 +110,10 @@ FINAL ANSWER TEMPLATE:
 - Open Ports: [list from knowledge.open_ports]
 - Web Services: [list from knowledge.web_services]
 - Technology Stack: [aggregated tech_stack from web_services]
+
+## Known CVEs (from Intel Research)
+[List each entry from knowledge.known_cves with cve_id, severity, tested status,
+and one-line description. If none: "No CVEs identified."]
 
 ## Findings
 
@@ -170,6 +180,28 @@ def get_strategic_user_prompt(state: MasterState) -> str:
     # Build a quick stats block so the LLM can make skip decisions easily
     kg_stats = _knowledge_stats(knowledge)
 
+    # Build known CVEs summary for the strategic planner so it can reference
+    # concrete CVE IDs in the vuln_analysis phase_objective rather than being generic.
+    known_cves = knowledge.get("known_cves", []) or []
+    untested_cves = [c for c in known_cves if not c.get("tested")]
+    if untested_cves:
+        cve_lines = []
+        for c in untested_cves:
+            tests = "; ".join(c.get("recommended_tests", [])) or "no specific tests noted"
+            cve_lines.append(
+                f"  - {c.get('cve_id','?')} ({c.get('technology','?')} {c.get('version','?')}) "
+                f"severity={c.get('severity','?')} public_exploit={'YES' if c.get('public_exploit') else 'no'}\n"
+                f"    Tests: {tests}"
+            )
+        cves_block = (
+            "\nKNOWN CVEs FROM RECON (untested — must be targeted in vuln_analysis):\n"
+            + "\n".join(cve_lines)
+            + "\nWhen setting vuln_analysis phase_objective, reference these CVE IDs "
+            "and their recommended tests explicitly. Do not be generic.\n"
+        )
+    else:
+        cves_block = ""
+
     return f"""ORIGINAL OBJECTIVE:
 {state['query']}
 
@@ -180,7 +212,7 @@ ITS SUMMARY: {last_summary}
 
 KNOWLEDGE GRAPH STATS (quick view for skip decisions):
 {kg_stats}
-
+{cves_block}
 FULL KNOWLEDGE GRAPH (accumulated across all phases):
 {json.dumps(knowledge, indent=2)}
 
@@ -197,10 +229,14 @@ using the report template instead.
 def _knowledge_stats(knowledge: dict) -> str:
     """One-line-per-field summary so the LLM can quickly assess skip conditions."""
     lines = []
-    for key in ["open_ports", "web_services", "endpoints", "input_points", "findings", "notes"]:
+    for key in ["open_ports", "web_services", "endpoints", "input_points", "findings", "known_cves", "notes"]:
         items = knowledge.get(key, [])
         count = len(items) if items else 0
-        lines.append(f"  {key}: {count}")
+        extra = ""
+        if key == "known_cves" and count:
+            untested = sum(1 for c in items if not c.get("tested"))
+            extra = f" ({untested} untested)"
+        lines.append(f"  {key}: {count}{extra}")
     return "\n".join(lines)
 
 
@@ -222,26 +258,11 @@ def strategic_planner(state: MasterState) -> MasterState:
 
     try:
         response = strategic_llm.invoke(messages)
-        # Extract native thinking
-        from prototype.sub_agents.helper import extract_native_thinking
-        native_thinking = extract_native_thinking(response)
-
-        # Fallback to checking if model still generated thinking inside JSON block
-        if not native_thinking:
-            try:
-                json_data = json.loads(extract_json_block(response.content))
-                native_thinking = json_data.get("thinking", "")
-            except Exception:
-                pass
-
         decision = strategic_parser.parse(extract_json_block(response.content))
 
         if decision.current_phase not in PHASES:
             logger.warning(f"[strategic] Invalid phase '{decision.current_phase}', defaulting to 'reporting'")
             decision.current_phase = "reporting"
-
-        metrics = state.get("metrics", {})
-        metrics["strategic_invocations"] = metrics.get("strategic_invocations", 0) + 1
 
         return {
             **state,
@@ -249,8 +270,7 @@ def strategic_planner(state: MasterState) -> MasterState:
             "phase_objective": decision.phase_objective,
             "final_answer": decision.final_answer,
             "phase_iteration_count": 0,
-            "thinking": native_thinking,
-            "metrics": metrics,
+
         }
 
     except Exception as e:
@@ -276,7 +296,7 @@ def strategic_planner(state: MasterState) -> MasterState:
             ),
             "final_answer": final,
             "phase_iteration_count": 0,
-            "thinking": f"Error: {str(e)}",
+
         }
 
 
@@ -286,12 +306,13 @@ def _emergency_report(state: MasterState) -> str:
     reporting phase. Produces a minimal but structured report from the
     raw knowledge graph so the run doesn't end with an error string.
     """
-    knowledge = state.get("knowledge", void_knowledge())
-    findings = knowledge.get("findings", [])
-    ports = knowledge.get("open_ports", [])
-    services = knowledge.get("web_services", [])
-    endpoints = knowledge.get("endpoints", [])
-    notes = knowledge.get("notes", [])
+    knowledge  = state.get("knowledge", void_knowledge())
+    findings   = knowledge.get("findings",   [])
+    ports      = knowledge.get("open_ports", [])
+    services   = knowledge.get("web_services", [])
+    endpoints  = knowledge.get("endpoints",  [])
+    notes      = knowledge.get("notes",      [])
+    known_cves = knowledge.get("known_cves", [])
 
     finding_lines = []
     if findings:
@@ -305,6 +326,15 @@ def _emergency_report(state: MasterState) -> str:
     else:
         finding_lines.append("No vulnerabilities were identified during testing.")
 
+    cve_lines = []
+    if known_cves:
+        for c in known_cves:
+            tested_str = "tested" if c.get("tested") else "NOT TESTED"
+            cve_lines.append(
+                f"- {c.get('cve_id','?')} ({c.get('technology','?')}) "
+                f"severity={c.get('severity','?')} — {tested_str}"
+            )
+
     return f"""# Penetration Test Report (Auto-Generated — Strategic Planner Error)
 
 ## Executive Summary
@@ -315,6 +345,9 @@ knowledge graph.
 ## Target Information
 - Open Ports: {json.dumps(ports, indent=2)}
 - Web Services: {json.dumps(services, indent=2)}
+
+## Known CVEs (from Intel Research)
+{chr(10).join(cve_lines) or 'None recorded.'}
 
 ## Findings
 {chr(10).join(finding_lines)}

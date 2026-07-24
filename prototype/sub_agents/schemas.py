@@ -112,12 +112,20 @@ def void_knowledge() -> TargetKnowledge:
         background_tasks={},
         coverage={
             "recon": {
-                CoverageKeys.PORT_SCAN:           {"required": True, "completed": False},
-                CoverageKeys.SERVICE_FINGERPRINT: {"required": True, "completed": False},
-                CoverageKeys.DIR_DISCOVERY:       {"required": True, "completed": False},
-                CoverageKeys.JS_DISCOVERY:        {"required": True, "completed": False},
-                CoverageKeys.API_DISCOVERY:       {"required": True, "completed": False},
-                CoverageKeys.PARAM_DISCOVERY:     {"required": True, "completed": False}
+                # port_scan is always required — it's the entry gate.
+                # All other recon checks start as required=False.
+                # The tactical_extractor promotes them to required=True
+                # only when their prerequisite is met:
+                #   service_fingerprint → promoted when open ports found
+                #   dir/js/api/param discovery → promoted when HTTP service confirmed
+                # This prevents the reviewer from scheduling gobuster/JS/param
+                # discovery before nmap has even run.
+                CoverageKeys.PORT_SCAN:           {"required": True,  "completed": False},
+                CoverageKeys.SERVICE_FINGERPRINT: {"required": False, "completed": False},
+                CoverageKeys.DIR_DISCOVERY:       {"required": False, "completed": False},
+                CoverageKeys.JS_DISCOVERY:        {"required": False, "completed": False},
+                CoverageKeys.API_DISCOVERY:       {"required": False, "completed": False},
+                CoverageKeys.PARAM_DISCOVERY:     {"required": False, "completed": False},
             },
             "attack_analysis": {},
             "reporting": {}
@@ -339,7 +347,7 @@ class MasterState(TypedDict, total=False):
 
     # output
     final_answer: str
-    thinking:     str
+
     metrics:      Dict[str, int]
 
 
@@ -392,6 +400,7 @@ class TacticalPlan(BaseModel):
 
 class PhaseDecision(BaseModel):
     """Output of the strategic planner."""
+
     current_phase:   str = Field(..., description=f"One of: {', '.join(PHASES)}")
     phase_objective: str = Field(..., description="Specific, scoped objective for the tactical planner this phase")
     final_answer:    str = Field(default="", description="Set ONLY when entire pentest is complete")

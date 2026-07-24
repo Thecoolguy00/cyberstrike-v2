@@ -65,31 +65,43 @@ RECON_PLAYBOOK = """
 RECON
 
 Objective
-Discover ports, services, endpoints, JS, APIs, forms, and parameters. Nothing active.
+Incrementally discover the attack surface. Plan only what is executable with knowledge
+you currently have. The planner will be called again after each execution batch.
 
-State
+State machine — follow in order, stop at first unmet condition:
 
-IF knowledge.open_ports is empty
-→ Discover ports (nmap_a).
+STEP 1 — Port discovery (always first)
+  Condition: knowledge.open_ports is empty
+  Action:    nmap_a basic scan
+  → Do NOT run http_a or ferox_a until ports are known.
 
-IF confirmed services or open ports exist but are not fingerprinted
-→ Fingerprint them (nmap_a for version/banner, http_a GET/HEAD for HTTP confirmation only).
+STEP 2 — Service fingerprinting
+  Condition: open_ports exist but services are not fingerprinted
+  Action:    nmap_a version/banner scan on discovered ports
 
-IF tech details are discovered but endpoints/parameters are unchecked
-→ Discover endpoints, JS files, and parameters (http_a, ferox_a passive/wordlist scans).
+STEP 3 — HTTP confirmation (only if HTTP ports found)
+  Condition: HTTP/HTTPS port exists (80, 443, 8080, 8443, or similar) but no web service confirmed
+  Action:    http_a GET/HEAD to confirm it serves HTTP and capture headers/title
 
-IF no ports are found open or all discovery is complete
-→ Finish phase.
+STEP 4 — Surface enumeration (only once HTTP URL is confirmed in knowledge graph)
+  Condition: web service URL is confirmed
+  Action:    ferox_a directory scan, http_a for JS files and param discovery
+  → Do NOT start this step until step 3 is complete and a URL is in the knowledge graph.
 
-IF a background is running then dispactch the approriate agent to check its status.
+STEP 5 — Background task check
+  Condition: A background scan is running
+  Action:    Check its status with the appropriate agent
+
+STEP 6 — Phase complete
+  Condition: All applicable steps are done
+  Action:    Return empty plan + phase_summary
 
 Forbidden — HARD STOPS, no exceptions
 - NO injection payloads of any kind: no XSS, SQLi, template injection, command injection,
-  path traversal, or parameter fuzzing. This means no <script>, alert(), ', ", --, ;, ../
-  in any request parameter — even "just to check reflection".
-- NO vulnerability testing or active verification of any kind.
-- http_a in this phase: GET and HEAD requests only, to confirm a port/endpoint serves content.
-  Do NOT fuzz, probe, or send payloads.
+  path traversal, or parameter fuzzing. No <script>, alert(), ', ", --, ;, ../
+- NO vulnerability testing of any kind.
+- http_a in this phase: GET and HEAD only. No fuzzing, no payloads.
+- ferox_a only after an HTTP URL is confirmed in the knowledge graph.
 """
 
 ATTACK_ANALYSIS_PLAYBOOK = """
@@ -484,6 +496,30 @@ Extract only NEW findings not already in the knowledge graph above.
                     if phase in accumulated["coverage"] and key in accumulated["coverage"][phase]:
                         accumulated["coverage"][phase][key]["completed"] = True
                         logger.info(f"[extractor] Marked coverage completed: {phase}.{key}")
+
+        # 1b. Prerequisite-gated promotion of recon coverage items.
+        #     Items start as required=False in void_knowledge() so the reviewer
+        #     cannot schedule them before their prerequisite is met.
+        #     Once the prerequisite is satisfied, flip required=True so the
+        #     reviewer (and planner) know this check now needs to be done.
+        recon_cov = accumulated.get("coverage", {}).get("recon", {})
+        ports_found = bool(accumulated.get("ports"))
+        http_services_found = bool(accumulated.get("services")) or any(
+            any(kw in str(v.get("service", "")).lower() for kw in ("http", "https", "web", "ssl"))
+            for v in accumulated.get("ports", {}).values()
+        )
+
+        if ports_found:
+            # Service fingerprinting is now executable
+            if CoverageKeys.SERVICE_FINGERPRINT in recon_cov:
+                recon_cov[CoverageKeys.SERVICE_FINGERPRINT]["required"] = True
+
+        if http_services_found:
+            # Directory/JS/API/param discovery are now executable
+            for key in [CoverageKeys.DIR_DISCOVERY, CoverageKeys.JS_DISCOVERY,
+                        CoverageKeys.API_DISCOVERY, CoverageKeys.PARAM_DISCOVERY]:
+                if key in recon_cov:
+                    recon_cov[key]["required"] = True
 
         # 2. Dynamic attack_analysis coverage generation based on discovered surface
         # Dynamic check for auth.login_testing
