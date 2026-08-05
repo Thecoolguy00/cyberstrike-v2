@@ -38,10 +38,17 @@ def is_large_port_range(p: str, max_span: int = 5000) -> bool:
 
 @mcp.tool()
 def basic_scan(target: str) ->str:
-    """Perform a basic network scan using nmap.
+    """Perform a basic network scan using nmap's default port set.
+
+    This runs ``nmap <target>`` without a ``-p`` option, so nmap checks its
+    default top 1000 TCP ports. Use ``noping_version_scan`` or
+    ``aggressive_scan`` when a specific port or range is required. Use
+    ``start_nmap_long_scan`` with ``ports="1-65535"`` for a complete TCP
+    port sweep.
 
     Args:
-        target (str): The target IP address or hostname to scan.
+        target (str): Target IP address or hostname. Only scan systems you
+            are authorized to assess.
 
     Returns:
         str: The output results of the basic scan.
@@ -50,11 +57,18 @@ def basic_scan(target: str) ->str:
 
 @mcp.tool()
 def aggressive_scan(target: str, ports: Optional[Union[str, List[str]]] = None) -> str:
-    """Perform an nmap aggressive network scan using -A parameter(includes OS detection, version detection, default script scanning, and traceroute)
+    """Run an aggressive nmap scan with OS, service, script, and traceroute detection.
+
+    Uses ``-T4 -A``. If ``ports`` is omitted, nmap uses its default top 1000
+    TCP ports. Foreground scans must not request a range larger than 5000
+    ports. For a full 1-65535 scan, use ``start_nmap_long_scan`` instead.
 
     Args:
-        target (str): The target IP address or hostname to scan.
-        ports (list): The list of ports to scan (optional)
+        target (str): Target IP address or hostname. Only scan systems you
+            are authorized to assess.
+        ports (str | list[str], optional): Port expression, such as ``"80"``,
+            ``"22,80,443"``, or ``"1-5000"``. Foreground ranges are limited
+            to 5000 ports.
 
     Returns:
         str: The output results of the intense scan.
@@ -69,11 +83,19 @@ def aggressive_scan(target: str, ports: Optional[Union[str, List[str]]] = None) 
 
 @mcp.tool()
 def noping_version_scan(target: str, ports: Optional[Union[str, List[str]]] = None) -> str:
-    """Perform an nmap service scan with ping diabled, this is the recommened scan w/wo ports.
+    """Detect services and versions without host discovery ping.
+
+    Uses ``-Pn -sV`` and is useful when ICMP or host discovery is blocked. If
+    ``ports`` is omitted, nmap uses its default top 1000 TCP ports. Foreground
+    scans may specify a range of up to 5000 ports. Use
+    ``start_nmap_long_scan`` with ``ports="1-65535"`` for all TCP ports.
 
     Args:
-        target (str): The target IP address or hostname to scan.
-        ports (list): The list of ports to scan (optional)
+        target (str): Target IP address or hostname. Only scan systems you
+            are authorized to assess.
+        ports (str | list[str], optional): Port expression, such as ``"80"``,
+            ``"22,80,443"``, or ``"1-5000"``. Foreground ranges are limited
+            to 5000 ports.
 
     Returns:
         str: The output results of the recommended scan.
@@ -88,12 +110,20 @@ def noping_version_scan(target: str, ports: Optional[Union[str, List[str]]] = No
 
 @mcp.tool()
 def script_scan(target: str, script: str, ports: Optional[Union[str, List[str]]] = None) -> str:
-    """Perform an nmap script scan on specified port and target
+    """Run a specified nmap NSE script against known target ports.
+
+    Uses ``-sV --script=<script>``. Provide specific discovered ports rather
+    than using this tool for initial port discovery. Foreground scans must not
+    request a range larger than 5000 ports. Use
+    ``start_nmap_long_scan`` for a full 1-65535 port discovery scan first.
 
     Args:
-        target (str): The target IP address or hostname to scan.
-        script (str): The specific nmap script
-        ports (list): The list of ports to scan
+        target (str): Target IP address or hostname. Only scan systems you
+            are authorized to assess.
+        script (str): NSE script name or script expression to run.
+        ports (str | list[str], optional): Known port expression, such as
+            ``"80"`` or ``"22,80,443"``. Foreground ranges are limited to
+            5000 ports.
 
     Returns:
         str: The output results of the script scan.
@@ -203,12 +233,23 @@ def start_nmap_long_scan(
     ports: Union[str, List[str]] = None,
     max_runtime: int = 900
 ) -> Dict:
-    """
-    Start a long-running nmap scan in background.
+    """Start a long-running nmap scan in the background.
+
+    Use this tool for scans that may take time, especially a complete TCP
+    port sweep. There are 65,535 TCP ports. To scan every TCP port, pass
+    ``ports="1-65535"``. Unlike the foreground nmap tools, this background
+    path is intended for large ranges. If ``ports`` is omitted, the scan
+    defaults to ``1-9000``; it does not scan all 65,535 ports automatically.
+    Poll the returned task with ``get_task`` or retrieve output with
+    ``get_task_output_mcp`` after waiting for the task to progress.
 
     Args:
-        target (str): The target IP address or hostname to scan.
-        ports (list): The list of ports to scan (optional), defaults to "1-9000"
+        target (str): Target IP address or hostname. Only scan systems you
+            are authorized to assess.
+        ports (str | list[str], optional): Nmap port expression, such as
+            ``"1-65535"`` for all TCP ports, ``"1-5000"`` for a range, or
+            ``"22,80,443"`` for selected ports. Defaults to ``"1-9000"``.
+        max_runtime (int): Maximum runtime in seconds before the task expires.
 
     """
     task_id, output_file = launch_background_task(
@@ -327,4 +368,4 @@ if __name__=="__main__":
     try:
         mcp.run(transport="streamable-http")
     except KeyboardInterrupt:
-        print("Shutting down MCP server...") 
+        print("\nShutting down MCP server cleanly...")

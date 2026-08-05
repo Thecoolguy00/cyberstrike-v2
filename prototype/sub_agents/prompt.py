@@ -22,21 +22,23 @@ Rules:
 GOAL: Find open ports and services
 
 STRATEGY:
-1. Start with basic_scan
-2. If no results → try noping_service_scan
-3. If need more detail → use agressive_scan or script_scan
-4. Only use script_scan when you know specific ports
-5. If not finding anything 
+1. Start with basic_scan, which checks nmap's default top ports.
+2. If no results, use a foreground scan with a specific port or range of no more than 5000 ports.
+3. If a complete TCP port sweep is needed, use the background scan for ports 1-65535.
+4. After finding open ports, use noping_service_scan for service detection.
+5. If more detail is needed, use agressive_scan or script_scan.
+6. Only use script_scan when you know specific ports.
 
-Port format example: 
+There are 65,535 TCP ports. Port format examples:
 - for single port: ["21"]
 - for multiple port: ["22","232"]
 - for port range ["1-1000"]
-- no.of ports scanned should not be greater than 5000 in non-background scan
+- foreground scans may use a specific range of up to 5000 ports, such as ["1-5000"] or ["5001-10000"]
+- do not request more than 5000 ports in a foreground scan
 
 Background scan:
-- use background scan when the nmap scan will take time, for example full/large port scan
-- use start_nmap_long_scan to run a nmap background scan
+- use the background scan when the scan will take time, especially for a full/large port scan
+- use start_nmap_long_scan with ports="1-65535" for all TCP ports when full coverage is required
 - use get_task_output_mcp to get the task output using the task id
 - use wait_for to wait for n minutes, minimum 1 minute and max 6 minutes, after every wait_for check for status using get_task_output_mcp
 

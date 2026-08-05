@@ -3,6 +3,9 @@
 
 #This function takes a langgraph tool list and converts it into a NL tool schema
 from pydantic_core import PydanticUndefined
+from app.utilities import dc_logger
+
+logger = dc_logger.LoggerAdap(dc_logger.get_logger(__name__))
 
 def extract_tool_Schema(tools: list):
     """Convert LangChain or MCP tools into a readable NL schema."""
@@ -10,7 +13,7 @@ def extract_tool_Schema(tools: list):
 
     for t in tools:
         name = getattr(t, "name", "unknown")
-        desc = getattr(t, "description", "No description").strip().split("\n")[0]
+        desc = " ".join(getattr(t, "description", "No description").strip().split())
 
         # MCP TOOL BRANCH ----------------------------------------------
         if hasattr(t, "inputSchema") and isinstance(t.inputSchema, dict):
@@ -30,7 +33,9 @@ def extract_tool_Schema(tools: list):
                 else:
                     req = "optional"
 
-                arg_lines.append(f"{arg} ({typ}, {req})")
+                description = " ".join(spec.get("description", "").split())
+                detail = f": {description}" if description else ""
+                arg_lines.append(f"{arg} ({typ}, {req}){detail}")
 
             args_str = ", ".join(arg_lines) if arg_lines else "none"
 
@@ -48,7 +53,9 @@ def extract_tool_Schema(tools: list):
                 else:
                     req = "optional"
 
-                arg_lines.append(f"{arg} ({typ}, {req})")
+                description = " ".join((finfo.description or "").split())
+                detail = f": {description}" if description else ""
+                arg_lines.append(f"{arg} ({typ}, {req}){detail}")
 
             args_str = ", ".join(arg_lines) if arg_lines else "none"
 
@@ -111,11 +118,26 @@ def extract_json_block(text: str):
 
 #custom message router for tool_calls
 import json, random, uuid, asyncio
+from functools import lru_cache
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from prototype.sub_agents.true_mcp_exec import get_mcp_tools, run_mcp_tool
 
-MCP_TOOLS=[t.name for t in asyncio.run(get_mcp_tools())]
-async def response_route(a:BaseMessage):
+@lru_cache(maxsize=1)
+def get_mcp_tool_names() -> tuple:
+    """Lazily fetch MCP tool names (memoized, safe on failure).
+
+    Returns a tuple so the result is hashable for lru_cache. Falls back to
+    an empty tuple if the MCP server is unreachable, instead of crashing at
+    import time.
+    """
+    try:
+        return tuple(t.name for t in asyncio.run(get_mcp_tools()))
+    except Exception as e:
+        logger.warning(f"[helper] Could not load MCP tools (server unreachable?): {e}")
+        return ()
+
+
+def response_route(a:BaseMessage):
     """
     If LLM requests and tool call then tool call( we have our own schema for llm output) then generates an synthetic AIMessage(tool_call).
     Otherwise return normal AIMessage.
@@ -239,7 +261,7 @@ def tool_router(state: GraphState):
 
     tool_name = last.tool_calls[0]["name"]
 
-    if tool_name in MCP_TOOLS:
+    if tool_name in get_mcp_tool_names():
         return "mcp_exec"
 
     return "tools"
@@ -306,5 +328,4 @@ def extract_native_thinking(response) -> str:
             return "\n".join(blocks)
 
     return ""
-
 

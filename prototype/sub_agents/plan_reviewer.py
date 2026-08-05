@@ -125,17 +125,20 @@ def _build_user_prompt(state: MasterState) -> str:
                for kw in ("80", "443", "8080", "8443", "http"))
     ] or list(endpoints_d.keys())[:3]
 
+    # Map domain phases to recon/attack_analysis for gate checks
+    eval_phase = "recon" if current_phase in ["network", "http"] else current_phase
+
     prereq_state = f"""PREREQUISITE STATE (what is actually known right now):
   open_ports known:       {len(ports)} → {list(ports.keys()) or 'NONE'}
   HTTP services/URLs:     {len(http_urls)} → {http_urls or 'NONE — do not schedule dir/JS/API/param discovery'}
   input_points known:     {len(inputs_d)} → {list(inputs_d.keys())[:3] or 'NONE'}
   CVEs in intel:          {len(exploit_intel)} → {list(exploit_intel.keys()) or 'NONE'}
 
-GATE CHECKS:
+  GATE CHECKS:
   Can run dir/JS/API/param discovery? {'YES — HTTP service confirmed' if http_urls else 'NO — no HTTP service yet'}
   Can run service fingerprinting?     {'YES — ports known' if ports else 'NO — no ports yet'}
   Can run CVE verification?           {'YES — CVEs found' if exploit_intel else 'NO — no CVEs yet'}
-  Can run injection testing?          {'YES — attack_analysis phase' if current_phase == 'attack_analysis' else 'NO — wrong phase or missing inputs'}"""
+  Can run injection testing?          {'YES — attack_analysis phase' if eval_phase == 'attack_analysis' else 'NO — wrong phase or missing inputs'}"""
 
     return f"""ORIGINAL OBJECTIVE:
 {query}
@@ -175,7 +178,10 @@ def plan_reviewer(state: MasterState) -> dict:
     ]
 
     try:
-        response = reviewer_llm.invoke(messages)
+        response = reviewer_llm.invoke(
+            messages,
+            config={"run_name": "Plan Reviewer LLM"},
+        )
         reviewed: ReviewerOutput = reviewer_parser.parse(extract_json_block(response.content))
         
         # Enforce description rewrite protection programmatically

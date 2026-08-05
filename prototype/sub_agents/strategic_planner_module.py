@@ -257,7 +257,10 @@ def strategic_planner(state: MasterState) -> MasterState:
     ]
 
     try:
-        response = strategic_llm.invoke(messages)
+        response = strategic_llm.invoke(
+            messages,
+            config={"run_name": "Strategic Planner LLM"},
+        )
         decision = strategic_parser.parse(extract_json_block(response.content))
 
         if decision.current_phase not in PHASES:

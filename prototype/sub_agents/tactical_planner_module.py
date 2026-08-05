@@ -32,6 +32,7 @@ from prototype.sub_agents.schemas import (
     TacticalExtraction,
     MasterState,
     PHASE_AGENT_MAP,
+    CoverageKeys,
     void_knowledge,
     VulnNudge,
     merge_knowledge,
@@ -133,11 +134,27 @@ Return:
 - extracted knowledge
 """
 
+NETWORK_PLAYBOOK = """
+NETWORK DISCOVERY
+1. Start with basic_scan.
+2. If no results or status complete: return empty plan + phase_summary.
+"""
+
+HTTP_PLAYBOOK = """
+HTTP ENUMERATION
+1. Confirm the web service by performing GET or HEAD request.
+2. If URL confirmed, perform directory enumeration or header validation.
+3. If finished: return empty plan + phase_summary.
+"""
+
 TACTICAL_PHASE_PLAYBOOKS: Dict[str, str] = {
     "recon":           RECON_PLAYBOOK,
     "attack_analysis": ATTACK_ANALYSIS_PLAYBOOK,
     "reporting":       REPORTING_PLAYBOOK,
+    "network":         NETWORK_PLAYBOOK,
+    "http":            HTTP_PLAYBOOK,
 }
+
 
 
 # ─── Nudge block injected into system prompt ──────────────────────────────────
@@ -264,16 +281,8 @@ def get_tactical_user_prompt(
     state: MasterState,
     phase_execution_history: List[Dict[str, str]],
 ) -> str:
-    try:
-        status_result = asyncio.run(run_mcp_tool("get_all_bg_task_status", {}))
-        if not isinstance(status_result, dict):
-            status_str = str(status_result)
-        elif status_result.get("total", 0) == 0:
-            status_str = "no background tasks dispatched yet"
-        else:
-            status_str = json.dumps(status_result, indent=2)
-    except Exception as e:
-        status_str = f"Error fetching — {e}"
+    # In v3, we avoid synchronous calls to run_mcp_tool in user prompt construction.
+    status_str = "no background tasks status (background tracking run asynchronously)"
 
     if not phase_execution_history:
         history_str = "None yet — first planning cycle for this phase"
@@ -468,7 +477,7 @@ Extract only NEW findings not already in the knowledge graph above.
         response = extractor_llm.invoke([
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt),
-        ])
+        ], config={"run_name": "Tactical Knowledge Extractor LLM"})
         # Extract native thinking
         from prototype.sub_agents.helper import extract_native_thinking
         native_thinking = extract_native_thinking(response)
@@ -488,14 +497,17 @@ Extract only NEW findings not already in the knowledge graph above.
         if "attack_analysis" not in accumulated["coverage"]:
             accumulated["coverage"]["attack_analysis"] = {}
 
+        # Map domain phases to recon coverage for M1
+        cov_phase = "recon" if phase in ["network", "http"] else phase
+
         # 1. Update coverage from successful task executions
         last_results = state.get("last_execution_results", [])
         for res in last_results:
             if res.get("status") == "SUCCESS" and res.get("coverage_keys"):
                 for key in res["coverage_keys"]:
-                    if phase in accumulated["coverage"] and key in accumulated["coverage"][phase]:
-                        accumulated["coverage"][phase][key]["completed"] = True
-                        logger.info(f"[extractor] Marked coverage completed: {phase}.{key}")
+                    if cov_phase in accumulated["coverage"] and key in accumulated["coverage"][cov_phase]:
+                        accumulated["coverage"][cov_phase][key]["completed"] = True
+                        logger.info(f"[extractor] Marked coverage completed: {cov_phase}.{key}")
 
         # 1b. Prerequisite-gated promotion of recon coverage items.
         #     Items start as required=False in void_knowledge() so the reviewer
@@ -527,7 +539,6 @@ Extract only NEW findings not already in the knowledge graph above.
         if isinstance(endpoints_data, dict):
             for url in endpoints_data.keys():
                 if any(x in url.lower() for x in ["login", "signin", "auth", "session"]):
-                    from prototype.sub_agents.schemas import CoverageKeys
                     if CoverageKeys.AUTH_LOGIN not in accumulated["coverage"]["attack_analysis"]:
                         accumulated["coverage"]["attack_analysis"][CoverageKeys.AUTH_LOGIN] = {"required": True, "completed": False}
                         logger.info(f"[extractor] Dynamically registered check: {CoverageKeys.AUTH_LOGIN}")
@@ -539,7 +550,6 @@ Extract only NEW findings not already in the knowledge graph above.
                 if not isinstance(val, dict):
                     continue
                 param = val.get("param", "").lower()
-                from prototype.sub_agents.schemas import CoverageKeys
                 if any(x in param for x in ["id", "uid", "user", "account", "uuid"]):
                     if CoverageKeys.IDOR_NUMERIC not in accumulated["coverage"]["attack_analysis"]:
                         accumulated["coverage"]["attack_analysis"][CoverageKeys.IDOR_NUMERIC] = {"required": True, "completed": False}
@@ -637,7 +647,10 @@ def tactical_planner(state: MasterState) -> dict:
     ]
 
     try:
-        response = tactical_llm.invoke(messages)
+        response = tactical_llm.invoke(
+            messages,
+            config={"run_name": "Tactical Planner LLM"},
+        )
         # Extract native thinking
         from prototype.sub_agents.helper import extract_native_thinking
         native_thinking = extract_native_thinking(response)

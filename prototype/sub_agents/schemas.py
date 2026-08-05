@@ -16,6 +16,8 @@ PHASE_AGENT_MAP: Dict[str, List[str]] = {
     "recon":         ["nmap_a", "http_a"],
     "attack_analysis": ["nmap_a", "http_a", "ferox_a", "python_a", "xss_a"],
     "reporting":     [],
+    "network":       ["nmap_a"],
+    "http":          ["http_a", "ferox_a"],
 }
 
 class CoverageKeys:
