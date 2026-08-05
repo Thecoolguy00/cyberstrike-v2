@@ -1,6 +1,6 @@
 """V4 entry point: deterministic discovery first, legacy planner second."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from prototype.sub_agents.schemas import void_knowledge
 from prototype.ver4.adapter import to_legacy_knowledge, to_planner_input
@@ -31,8 +31,8 @@ def _initial_state(target: str, planner_input: PlannerInput) -> Dict[str, Any]:
     }
 
 
-async def run_v4(target: str, runtime: Optional[DiscoveryRuntime] = None, budget: Optional[DiscoveryBudget] = None, run_planner: bool = True) -> Dict[str, Any]:
-    discovery = await run_discovery(target, runtime=runtime, budget=budget)
+async def run_v4(target: str, runtime: Optional[DiscoveryRuntime] = None, budget: Optional[DiscoveryBudget] = None, run_planner: bool = True, ports: Optional[List[str]] = None) -> Dict[str, Any]:
+    discovery = await run_discovery(target, runtime=runtime, budget=budget, ports=ports)
     planner_input = to_planner_input(discovery)
     if not run_planner:
         return {"discovery": discovery, "planner_input": planner_input}

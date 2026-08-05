@@ -2,7 +2,7 @@
 
 import asyncio
 from urllib.parse import urlparse
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from prototype.ver4.constants import DEFAULT_MAX_RUNTIME
 from prototype.ver4.discovery.content import discover_content
@@ -33,7 +33,7 @@ def _merge_technology(knowledge: DiscoveryKnowledge, item: Technology) -> None:
         existing.evidence = sorted(set(existing.evidence + item.evidence))
 
 
-async def run_discovery(target: str, runtime: Optional[DiscoveryRuntime] = None, budget: Optional[DiscoveryBudget] = None) -> DiscoveryKnowledge:
+async def run_discovery(target: str, runtime: Optional[DiscoveryRuntime] = None, budget: Optional[DiscoveryBudget] = None, ports: Optional[List[str]] = None) -> DiscoveryKnowledge:
     target = normalize_target(target)
     if runtime is None:
         from prototype.ver4.runtime.mcp import MCPRuntime
@@ -41,12 +41,12 @@ async def run_discovery(target: str, runtime: Optional[DiscoveryRuntime] = None,
     budget = budget or DiscoveryBudget(max_runtime=DEFAULT_MAX_RUNTIME)
     knowledge = DiscoveryKnowledge(target=target)
 
-    network_observations, ports = await discover_network(runtime, target)
+    network_observations, discovered_ports = await discover_network(runtime, target, ports=ports)
     knowledge.observations.extend(network_observations)
-    knowledge.ports.update(ports)
+    knowledge.ports.update(discovered_ports)
     knowledge.coverage.setdefault("recon", {})["network"] = {"required": True, "completed": any(item.status != DiscoveryStatus.FAILED for item in network_observations)}
 
-    web_urls = candidate_urls(target, ports)
+    web_urls = candidate_urls(target, discovered_ports)
     http_observations, responses = await probe_http(runtime, web_urls, budget)
     knowledge.observations.extend(http_observations)
     knowledge.http_observations.extend(responses)
@@ -100,5 +100,5 @@ async def run_discovery(target: str, runtime: Optional[DiscoveryRuntime] = None,
     return knowledge
 
 
-def run_discovery_sync(target: str, runtime: Optional[DiscoveryRuntime] = None, budget: Optional[DiscoveryBudget] = None) -> DiscoveryKnowledge:
-    return asyncio.run(run_discovery(target, runtime=runtime, budget=budget))
+def run_discovery_sync(target: str, runtime: Optional[DiscoveryRuntime] = None, budget: Optional[DiscoveryBudget] = None, ports: Optional[List[str]] = None) -> DiscoveryKnowledge:
+    return asyncio.run(run_discovery(target, runtime=runtime, budget=budget, ports=ports))

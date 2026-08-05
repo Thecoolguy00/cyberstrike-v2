@@ -67,6 +67,8 @@ class HTTPObservation(BaseModel):
     body: str = ""
     body_truncated: bool = False
     title: str = ""
+    tls_verified: Optional[bool] = None
+    tls_warning: Optional[str] = None
     error: Optional[str] = None
 
 
