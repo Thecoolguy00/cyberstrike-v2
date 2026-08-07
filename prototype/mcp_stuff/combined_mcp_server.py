@@ -1,13 +1,16 @@
 from mcp.server.fastmcp import FastMCP
 from typing import Dict, List, Sequence, Union, Optional
-from pathlib import Path
 
 mcp=FastMCP(name="combined_tools",host="0.0.0.0",port=4545)
 
 #nmap for network scan
-from prototype.mcp_stuff.kali_command import CommandRunner
-nmap_port_mapper=CommandRunner.port_args
-from prototype.mcp_stuff.nmap_actions import basic_scan_action,script_scan_action,aggressive_scan_action,noping_version_scan_action
+from prototype.mcp_stuff.nmap_actions import (
+    basic_scan_action,
+    script_scan_action,
+    aggressive_scan_action,
+    noping_version_scan_action,
+    start_nmap_long_scan_action,
+)
 
 #helper fucntion for normalising ports
 
@@ -223,9 +226,8 @@ def xsstrike_basic_scan(target:str)->str:
 
     return xsstrike_basic_scan_action(target=target)
 
-
 #long running tasks specific function
-from prototype.mcp_stuff.background_tasks import launch_background_task, get_background_task_status, get_task_by_id, get_task_output
+from prototype.mcp_stuff.background_tasks import get_background_task_status, get_task_by_id, get_task_output
 
 @mcp.tool()
 def start_nmap_long_scan(
@@ -252,19 +254,22 @@ def start_nmap_long_scan(
         max_runtime (int): Maximum runtime in seconds before the task expires.
 
     """
-    task_id, output_file = launch_background_task(
-        cmd="nmap",
-        args=nmap_port_mapper(normalize_ports(ports=ports or "1-9000")) + [target],
-        max_runtime=max_runtime
+    return start_nmap_long_scan_action(
+        target=target,
+        ports=ports,
+        max_runtime=max_runtime,
     )
 
-    return {
-        "task_id": task_id,
-        "status": "started",
-        "output_file": str(output_file),
-        "max_runtime": max_runtime
-    }
+#feroxbuster
+from prototype.mcp_stuff.feroxbuster_actions import (
+    feroxbuster_foreground_action,
+    start_feroxbuster_action,
+)
 
+@mcp.tool()
+def feroxbuster_foreground_scan(target: str) -> str:
+    """Run a foreground feroxbuster scan with the bundled asset wordlist. intended to be used for Discovery L1"""
+    return feroxbuster_foreground_action(target=target)
 
 #TODO: add option for wordlists, names instead of path, point the wordlists name to its path using a dict
 @mcp.tool()
@@ -279,25 +284,7 @@ def start_feroxbuster(
     Args:
         target (str): The url of the webapp
     """
-    wordlist = "/usr/share/wordlists/dirb/common.txt"
-
-    if not Path(wordlist).exists():
-        return {
-            "error": "wordlist not found",
-            "status": "failed"
-        }
-    
-    # Basic feroxbuster args
-    args = ["-u", target, "-w", wordlist]
-
-    task_id, output_file = launch_background_task(cmd="feroxbuster", args=args, max_runtime=max_runtime)
-
-    return {
-        "task_id": task_id,
-        "status": "started",
-        "output_file": str(output_file),
-        "max_runtime": max_runtime
-    }
+    return start_feroxbuster_action(target=target, max_runtime=max_runtime)
 
 @mcp.tool()
 def get_task_output_mcp(task_id: str) -> str:

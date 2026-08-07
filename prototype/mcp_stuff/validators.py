@@ -163,12 +163,21 @@ def validate_feroxbuster(args:list[str])->bool:
     if contains_shell_metacharacters(args):
         return False
     
-    for i,a in enumerate(args):
-        if a in ("-u","--url") and i+1<len(args):
-            if is_valid_url(str(args[i+1])):
-                return True
-    
-    return False
+    has_valid_url = False
+    for i, a in enumerate(args):
+        if a in ("-u", "--url"):
+            if i + 1 >= len(args):
+                return False
+            has_valid_url = is_valid_url(str(args[i + 1]))
+            if not has_valid_url:
+                return False
+        if a in ("-w", "--wordlist"):
+            if i + 1 >= len(args):
+                return False
+            if not str(args[i + 1]).strip():
+                return False
+
+    return has_valid_url
 
 def validate_dalfox(args:list[str])->bool:
 
