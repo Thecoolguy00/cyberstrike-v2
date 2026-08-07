@@ -36,7 +36,7 @@ def _merge_technology(knowledge: DiscoveryKnowledge, item: Technology) -> None:
 async def run_discovery(target: str, runtime: Optional[DiscoveryRuntime] = None, budget: Optional[DiscoveryBudget] = None, ports: Optional[List[str]] = None) -> DiscoveryKnowledge:
     target = normalize_target(target)
     if runtime is None:
-        from prototype.ver4.runtime.mcp import MCPRuntime
+        from prototype.ver4.runtime.mcpx import MCPRuntime
         runtime = MCPRuntime()
     budget = budget or DiscoveryBudget(max_runtime=DEFAULT_MAX_RUNTIME)
     knowledge = DiscoveryKnowledge(target=target)

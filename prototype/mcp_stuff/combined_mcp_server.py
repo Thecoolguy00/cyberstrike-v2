@@ -267,7 +267,7 @@ from prototype.mcp_stuff.feroxbuster_actions import (
 )
 
 @mcp.tool()
-def feroxbuster_foreground_scan(target: str) -> str:
+def foreground_feroxbuster(target: str) -> str:
     """Run a foreground feroxbuster scan with the bundled asset wordlist. intended to be used for Discovery L1"""
     return feroxbuster_foreground_action(target=target)
 

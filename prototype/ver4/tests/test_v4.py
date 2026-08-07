@@ -44,7 +44,7 @@ class FakeRuntime:
             "error": None,
         }
 
-    async def content_scan(self, url, max_runtime):
+    async def content_scan(self, url):
         self.calls.append(("content", url))
         return f"200      GET      123l      456w      789c {url}/swagger"
 

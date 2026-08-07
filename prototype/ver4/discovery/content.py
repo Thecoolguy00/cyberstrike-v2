@@ -2,7 +2,6 @@
 
 from typing import Dict, List, Tuple
 
-from prototype.ver4.constants import DEFAULT_FEROX_MAX_RUNTIME
 from prototype.ver4.parsers.ferox import parse_ferox
 from prototype.ver4.schemas import Capability, ContentHit, DiscoveryBudget, DiscoveryStatus, Observation
 from prototype.ver4.runtime.base import DiscoveryRuntime
@@ -13,7 +12,7 @@ async def discover_content(runtime: DiscoveryRuntime, urls: List[str], budget: D
     hits: Dict[str, ContentHit] = {}
     for url in urls:
         try:
-            raw = await runtime.content_scan(url, min(DEFAULT_FEROX_MAX_RUNTIME, budget.max_runtime))
+            raw = await runtime.content_scan(url)
             parsed = parse_ferox(raw)
             for item in parsed[:budget.max_ferox_hits]:
                 hit = ContentHit(**item)

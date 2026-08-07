@@ -2,6 +2,7 @@ from pathlib import Path
 from prototype.mcp_stuff.background_tasks import launch_background_task
 from prototype.mcp_stuff.kali_command import CommandRunner
 
+#change the path to absolute path after moving it to kali
 ASSET_WORDLIST = Path(__file__).resolve().parent / "assets" / "short.txt"
 
 
