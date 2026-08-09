@@ -8,11 +8,22 @@ consume them without another LLM round-trip.
 
 import re
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 from prototype.ver4.schemas import DiscoveryKnowledge, ExploitIntel
 
 CVE_RE = re.compile(r"CVE-\d{4}-\d{4,7}", re.I)
 _ALLOWED_VERSION_WORDS = {"unknown", "na", "n/a", "-", "none", "latest"}
+
+# Only SSH is excluded from exploit research (per requirement); the others are
+# non-service placeholders, not real services. Everything else (including web apps
+# and non-standard ports like rtsp/mislabelled services) is still researched.
+_SKIP_PORT_SERVICES = {"ssh", "unknown", "tcp", "filtered"}
+
+# Bare domain-looking technology names (e.g. "github.com") are fingerprint noise —
+# they come from URLs in page content, not from an identified technology, and are
+# never exploit-intel targets.
+_DOMAIN_LIKE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$", re.I)
 
 
 def exploit_key(technology: str, version: Optional[str]) -> str:
@@ -22,46 +33,73 @@ def exploit_key(technology: str, version: Optional[str]) -> str:
     return f"{technology.lower()} {version}"
 
 
-def _intel_candidates(knowledge: DiscoveryKnowledge) -> List[Tuple[str, Optional[str]]]:
-    seen = set()
-    candidates: List[Tuple[str, Optional[str]]] = []
+def _target_host(knowledge: DiscoveryKnowledge) -> str:
+    target = knowledge.target or ""
+    parsed = urlparse(target if "://" in target else f"//{target}")
+    return parsed.hostname or target
 
-    for info in knowledge.ports.values():
-        service = str(info.get("service") or "").strip()
-        if not service or service.lower() in {"unknown", "tcp", "filtered"}:
+
+def _intel_candidates(knowledge: DiscoveryKnowledge) -> List[Tuple[str, Optional[str], str]]:
+    """Returns (service, version, location) tuples for unresearched identified services."""
+    seen = set()
+    candidates: List[Tuple[str, Optional[str], str]] = []
+    services = knowledge.services or _fallback_services(knowledge)
+
+    for key, info in services.items():
+        name = str(info.get("name") or "").strip()
+        if not name or name.lower() in _SKIP_PORT_SERVICES or _DOMAIN_LIKE.match(name):
             continue
         version = str(info.get("version") or "").strip()
         version = None if not version or version.lower() in _ALLOWED_VERSION_WORDS else version
-        key = exploit_key(service, version)
-        if key not in seen and key not in knowledge.exploit_intelligence:
-            seen.add(key)
-            candidates.append((service, version))
-
-    for technology in knowledge.technologies.values():
-        name = technology.name.strip()
-        if not name:
+        dedupe_key = exploit_key(name, version)
+        if dedupe_key in seen or dedupe_key in knowledge.exploit_intelligence:
             continue
-        version = technology.version or None
-        key = exploit_key(name, version)
-        if key not in seen and key not in knowledge.exploit_intelligence:
-            seen.add(key)
-            candidates.append((name, version))
+        seen.add(dedupe_key)
+        location = str(info.get("location") or key)
+        candidates.append((name, version, location))
 
     return candidates
 
 
-def intel_task(service: str, version: Optional[str]) -> Dict[str, Any]:
+def _fallback_services(knowledge: DiscoveryKnowledge) -> Dict[str, Dict[str, Any]]:
+    """Best-effort services when the identification node did not run."""
+    host = _target_host(knowledge)
+    services: Dict[str, Dict[str, Any]] = {}
+    for port, info in knowledge.ports.items():
+        service = str(info.get("service") or "unknown").strip()
+        version = str(info.get("version") or "").strip() or None
+        services[f"{host}:{port}".lower()] = {
+            "name": service,
+            "version": version,
+            "location": f"{host}:{port}".lower(),
+        }
+    for technology in knowledge.technologies.values():
+        name = technology.name.strip()
+        if not name:
+            continue
+        services[f"tech:{name.lower()}"] = {
+            "name": name,
+            "version": technology.version or None,
+            "location": "",
+        }
+    return services
+
+
+def intel_task(service: str, version: Optional[str], location: str = "") -> Dict[str, Any]:
     """Task dict compatible with sub_agents/executor.py::execute_plan_parallel."""
+    location_hint = f" ({location})" if location else ""
+    from prototype.ver4.constants import AGENT_TASK_PHASE_PREFIX
+    prefix = AGENT_TASK_PHASE_PREFIX
     if version:
         description = (
-            f"[attack_analysis] Research {service} {version} for known vulnerabilities "
+            f"{prefix} Research {service} {version}{location_hint} for known vulnerabilities "
             "and public exploits. Report exact CVE IDs, severity, PoC availability, "
             "and recommended tests."
         )
         slug = f"intel_{service}_{version}"
     else:
         description = (
-            f"[attack_analysis] Research {service} (unknown version) — identify the "
+            f"{prefix} Research {service}{location_hint} (unknown version) — identify the "
             "server/tech version where possible and look for known/general exploits "
             "and public PoCs."
         )
@@ -132,13 +170,14 @@ def parse_intel_report(text: str) -> Optional[Dict[str, Any]]:
     }
 
 
-def _apply_intel_result(knowledge: DiscoveryKnowledge, text: str) -> bool:
+def _apply_intel_result(knowledge: DiscoveryKnowledge, text: str, location_by_key: Optional[Dict[str, str]] = None) -> bool:
     parsed = parse_intel_report(text)
     if not parsed:
         return False
     item = ExploitIntel(
         technology=parsed["technology"],
         version=parsed["version"],
+        location="",
         cve=parsed["cve"],
         severity=parsed["severity"],
         poc=parsed["poc"] or parsed["github_poc"],
@@ -148,6 +187,7 @@ def _apply_intel_result(knowledge: DiscoveryKnowledge, text: str) -> bool:
         sources=["intel_a"],
     )
     key = exploit_key(item.technology, item.version)
+    item.location = (location_by_key or {}).get(key, "")
     existing = knowledge.exploit_intelligence.get(key)
     if existing:
         item.cve = item.cve or existing.cve
@@ -169,7 +209,8 @@ async def run_exploit_intel(knowledge: DiscoveryKnowledge, verbose: bool = True)
     candidates = _intel_candidates(knowledge)
     if not candidates:
         return 0
-    plan = [intel_task(service, version) for service, version in candidates]
+    plan = [intel_task(service, version, location) for service, version, location in candidates]
+    location_by_key = {exploit_key(service, version): location for service, version, location in candidates}
 
     # Lazy import: executor pulls in the agent graphs which connect to MCP.
     from prototype.sub_agents.executor import execute_plan_parallel
@@ -177,7 +218,7 @@ async def run_exploit_intel(knowledge: DiscoveryKnowledge, verbose: bool = True)
     results = await execute_plan_parallel(plan, verbose=verbose)
     added = 0
     for result in results:
-        if _apply_intel_result(knowledge, result.get("result", "")):
+        if _apply_intel_result(knowledge, result.get("result", ""), location_by_key):
             added += 1
         else:
             note = f"intel({result.get('_task_id', 'unknown')}): {result.get('result', '')[:300]}"

@@ -349,6 +349,24 @@ def searchsploit_search(technology: str) -> str:
     """
     return searchsploit_lookup(technology)
 
+from prototype.mcp_stuff.cat_actions import cat_file_action
+
+@mcp.tool()
+def cat(filepath: str) -> str:
+    """
+    Read and return the contents of a local file on the MCP host.
+
+    Primarily used to fetch ExploitDB .txt exploit files returned by
+    ``searchsploit_search`` (e.g. /usr/share/exploitdb/exploits/python/webapps/51636.txt).
+
+    Args:
+        filepath (str): Absolute path to the file to read.
+
+    Returns:
+        str: File contents (truncated to a safe size) or an error message.
+    """
+    return cat_file_action(filepath)
+
 
 if __name__=="__main__":
     print("mcp server started")

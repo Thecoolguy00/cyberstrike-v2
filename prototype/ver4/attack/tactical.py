@@ -11,6 +11,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 
 from prototype.sub_agents.helper import extract_json_block
 from prototype.ver4.attack.strategic import target_tokens
+from prototype.ver4.constants import AGENT_TASK_PHASE_PREFIX
 from prototype.ver4.schemas import Task, TacticalPlan
 
 logger = dc_logger.LoggerAdap(dc_logger.get_logger(__name__))
@@ -93,16 +94,25 @@ def filter_task_list(tasks: List[Task], state: Dict) -> Tuple[List[Task], int, i
 
 
 def cve_verification_tasks(state: Dict) -> List[Task]:
-    """Auto-inject verification tasks for untested CVEs (from exploit intel)."""
+    """
+    Auto-inject verification tasks for untested CVEs — but ONLY for technologies
+    that are part of the scoped web target's stack. This stops SSH/RTSP/mislabelled
+    intel CVEs from being verified against the web application being attacked.
+    """
     knowledge = state["knowledge"]
     target = state["target"]
     history_descs = {str(entry.get("task", "")).lower() for entry in state.get("execution_history", [])}
+
+    web_tech = {name.strip().lower() for name in knowledge.technologies}
     tasks: List[Task] = []
     for key, item in sorted(knowledge.exploit_intelligence.items()):
         if not item.cve or item.tested:
             continue
+        if item.technology.strip().lower() not in web_tech:
+            continue  # non-web (or unrecognised) service — leave verification to a dedicated session
         for cve_id in CVE_RE.findall(item.cve):
-            description = f"[attack_analysis] Verify vulnerability {cve_id} for {item.technology} {item.version} on {target}"
+            scope = item.location or target
+            description = f"{AGENT_TASK_PHASE_PREFIX} Verify vulnerability {cve_id} for {item.technology} {item.version} on {scope}"
             if description.lower() in history_descs:
                 continue
             key_slug = re.sub(r"[^a-zA-Z0-9_]", "_", key).lower()
@@ -119,10 +129,10 @@ def cve_verification_tasks(state: Dict) -> List[Task]:
 
 
 def _tactical_system_prompt(state: Dict) -> str:
-    return f"""You are a tactical task planner for ONE scoped attack session (phase: attack_analysis).
+    return f"""You are a tactical task planner for ONE scoped attack session (internal phase: attack_analysis).
 
 SCOPE: {state['target']} ONLY. Every task_description MUST include the target URL/host
-AND start with "[attack_analysis]".
+AND start with the prefix "{AGENT_TASK_PHASE_PREFIX}" (this is the agent-recognized testing phase).
 
 SESSION OBJECTIVE:
 {state['objective']}
@@ -146,6 +156,9 @@ RULES:
 - Never repeat work already in EXECUTION HISTORY.
 - Batch truly independent tasks with empty depends_on; use depends_on for real ordering.
 - Only plan tasks that are executable right now.
+- EXECUTION CONSTRAINT: at most 5 agent tasks run CONCURRENTLY. Keep each cycle's
+  independent batch lean and prioritized — never dump an oversized one-shot batch;
+  that only serializes against the 5-task limit and wastes tokens.
 - When the objective is complete, return an EMPTY plan and a phase_summary.
 
 OUTPUT FORMAT:
@@ -177,7 +190,7 @@ EXECUTION HISTORY (this session):
 KNOWLEDGE SNAPSHOT:
 {_knowledge_digest(state)}
 
-Output the FULL batch of tasks for this cycle, prefixed with "[attack_analysis]".
+Output the FULL batch of tasks for this cycle, prefixed with "{AGENT_TASK_PHASE_PREFIX}".
 """
 
 

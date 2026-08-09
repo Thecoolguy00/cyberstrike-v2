@@ -132,6 +132,7 @@ class ExploitIntel(BaseModel):
 
     technology: str = ""
     version: str = "unknown"
+    location: str = Field(default="", description="host:port or base URL the technology is served on (web-only; empty for non-web services)")
     cve: str = ""
     cvss: float = 0.0
     severity: str = "Unknown"
@@ -203,7 +204,7 @@ class Task(BaseModel):
     """Single task for an agent within a scoped attack session."""
 
     agent: str = Field(..., description="Agent name — must be in the allowed list for the attack session")
-    task_description: str = Field(..., description="Clear, specific task. MUST start with [attack_analysis] and include the scoped target URL/host.")
+    task_description: str = Field(..., description="Clear, specific task. MUST start with [vuln_analysis] (the agent-recognized testing phase) and include the scoped target URL/host.")
     task_id: str = Field(..., description="Unique short slug for dependency tracking")
     depends_on: List[str] = Field(default_factory=list)
     coverage_keys: List[str] = Field(default_factory=list)

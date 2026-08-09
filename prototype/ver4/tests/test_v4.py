@@ -228,9 +228,9 @@ summary: copyparty 1.8.6 ships a known critical vulnerability.
     def test_filter_task_list_scoping(self):
         state = {"target": "http://example.test:80", "execution_history": []}
         tasks = [
-            Task(agent="http_a", task_description="[attack_analysis] Probe /admin on http://example.test:80", task_id="t1"),
-            Task(agent="http_a", task_description="[attack_analysis] Probe /admin on http://evil.example", task_id="t2"),
-            Task(agent="nmap_a", task_description="[attack_analysis] Scan http://example.test:80", task_id="t3"),
+            Task(agent="http_a", task_description="[vuln_analysis] Probe /admin on http://example.test:80", task_id="t1"),
+            Task(agent="http_a", task_description="[vuln_analysis] Probe /admin on http://evil.example", task_id="t2"),
+            Task(agent="nmap_a", task_description="[vuln_analysis] Scan http://example.test:80", task_id="t3"),
         ]
         kept, dropped, off_target = filter_task_list(tasks, state)
         self.assertEqual([task.task_id for task in kept], ["t1"])

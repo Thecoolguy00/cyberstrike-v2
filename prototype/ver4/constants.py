@@ -26,3 +26,8 @@ NON_HTTP_PORTS = {
 MAX_DECISION_ITERATIONS = 8
 MAX_ATTACK_SESSION_ITERATIONS = 8
 MAX_STUCK_CYCLES = 3
+
+# Phase label the agent sub-layer recognizes for active testing tasks. The ver3
+# agents only accept recon / enumeration / vuln_analysis / exploitation, so V4
+# attack & intel tasks must prefix with "[vuln_analysis]" to pass their phase lock.
+AGENT_TASK_PHASE_PREFIX = "[vuln_analysis]"

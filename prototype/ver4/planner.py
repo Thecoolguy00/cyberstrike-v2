@@ -55,13 +55,16 @@ async def run_v4(
         return {"discovery": discovery, "planner_input": to_planner_input(discovery)}
 
     from prototype.ver4.intelligence import run_exploit_intel
+    from prototype.ver4.identification import identify_services
 
     metrics = _empty_metrics()
     decision_history: List[PlannerDecision] = []
     final_answer = ""
     full_scan_done = bool(discovery.coverage.get("recon", {}).get("network_l2", {}).get("completed"))
 
-    # Exploit intel runs right after Discovery L1 (and again after L2 below).
+    # Identify real services/application (resolve misleading nmap labels), then
+    # run exploit intel right after Discovery L1 (and again after L2 below).
+    identify_services(discovery)
     metrics["intel_tasks"] += await run_exploit_intel(discovery)
 
     for iteration in range(MAX_DECISION_ITERATIONS):
@@ -86,6 +89,7 @@ async def run_v4(
                 continue  # no-op; next cycle the rules route to REPORT
             discovery = await run_discovery(target, level=2, runtime=runtime, budget=budget, knowledge=discovery)
             full_scan_done = True
+            identify_services(discovery)
             metrics["intel_tasks"] += await run_exploit_intel(discovery)
             continue
 

@@ -7,6 +7,10 @@ ports NOT already identified by L1.
 """
 
 import asyncio
+import json
+import re
+import uuid
+from pathlib import Path
 from urllib.parse import urlparse
 from typing import Dict, List, Optional
 
@@ -46,6 +50,21 @@ def _mark_coverage(knowledge: DiscoveryKnowledge, key: str, required: bool = Tru
         "required": bool(required or entry.get("required")),
         "completed": bool(completed or entry.get("completed")),
     }
+
+
+def _save_discovery_snapshot(knowledge: DiscoveryKnowledge, level: int) -> None:
+    """Persist the discovery result for this level to output/ as soon as it is done."""
+    try:
+        output_dir = Path("output")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        slug = re.sub(r"[^a-zA-Z0-9_-]", "_", knowledge.target)[:48] or "target"
+        path = output_dir / f"discovery_l{level}_{slug}_{uuid.uuid4().hex[:8]}.json"
+        path.write_text(
+            json.dumps(knowledge.model_dump(mode="json"), indent=2, default=str),
+            encoding="utf-8",
+        )
+    except Exception as exc:  # never break discovery on a persistence failure
+        knowledge.errors.append(f"failed to persist L{level} snapshot: {exc}")
 
 
 async def run_discovery(
@@ -157,6 +176,9 @@ async def run_discovery(
         if observation.error:
             knowledge.errors.append(f"{observation.capability.value} {observation.target}: {observation.error}")
     knowledge.errors = sorted(set(knowledge.errors))
+
+    if level == 1 or level == 2:
+        _save_discovery_snapshot(knowledge, level)
     return knowledge
 
 
