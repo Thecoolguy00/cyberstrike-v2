@@ -3,6 +3,7 @@ llm_models:
   default_model: deepseek_v4_flash_openrouter
   
   # agent-specific models (optional overrides)
+  l2_decision: deepseek_v4_flash_openrouter
   strategic_planner: deepseek_v4_flash_openrouter
   tactical_planner: deepseek_v4_pro_openrouter
   tactical_extractor: deepseek_v4_flash_openrouter

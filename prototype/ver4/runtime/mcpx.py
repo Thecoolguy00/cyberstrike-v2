@@ -49,3 +49,18 @@ class MCPRuntime:
 
     async def content_scan(self, url: str) -> str:
         return await self._call("foreground_feroxbuster", {"target": url})
+
+    async def start_long_port_scan(self, target: str, ports: str, max_runtime: int = 900) -> Dict[str, Any]:
+        decoded = _decode(await self._call("start_nmap_long_scan", {"target": target, "ports": ports, "max_runtime": max_runtime}))
+        if isinstance(decoded, dict):
+            return decoded
+        return {"output": str(decoded)}
+
+    async def get_task(self, task_id: str) -> Dict[str, Any]:
+        decoded = _decode(await self._call("get_task", {"task_id": task_id}))
+        if isinstance(decoded, dict):
+            return decoded
+        return {"output": str(decoded)}
+
+    async def get_task_output(self, task_id: str) -> str:
+        return await self._call("get_task_output_mcp", {"task_id": task_id})
