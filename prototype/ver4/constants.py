@@ -27,6 +27,9 @@ MAX_DECISION_ITERATIONS = 8
 MAX_ATTACK_SESSION_ITERATIONS = 8
 MAX_STUCK_CYCLES = 3
 
+# Hard-stop: end the attack session as soon as this many vulns are CONFIRMED.
+HARD_STOP_CONFIRMED_FINDINGS = 2
+
 # Phase label the agent sub-layer recognizes for active testing tasks. The ver3
 # agents only accept recon / enumeration / vuln_analysis / exploitation, so V4
 # attack & intel tasks must prefix with "[vuln_analysis]" to pass their phase lock.

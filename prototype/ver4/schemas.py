@@ -124,7 +124,7 @@ class Finding(BaseModel):
     description: str = ""
     evidence: str = ""
     source: str = ""
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    # timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class ExploitIntel(BaseModel):

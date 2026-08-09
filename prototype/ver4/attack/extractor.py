@@ -117,6 +117,8 @@ def extract_results(knowledge: DiscoveryKnowledge, results: List[Dict]) -> bool:
         logger.error(f"[attack.extractor] Extraction failed (skipping): {exc}")
 
     for finding in findings:
+        # The LLM's structured output may fabricate an id — override with a
+        # deterministic one. timestamp is not part of the schema.
         finding_id = _finding_id(finding.type, finding.location)
         finding.id = finding_id
         if finding_id not in knowledge.findings:

@@ -11,7 +11,7 @@ from app.utilities import dc_logger
 from prototype.ver4.attack.extractor import extract_results, register_dynamic_attack_coverage
 from prototype.ver4.attack.strategic import resolve_attack_objective
 from prototype.ver4.attack.tactical import tactical_planner
-from prototype.ver4.constants import MAX_ATTACK_SESSION_ITERATIONS, MAX_STUCK_CYCLES
+from prototype.ver4.constants import HARD_STOP_CONFIRMED_FINDINGS, MAX_ATTACK_SESSION_ITERATIONS, MAX_STUCK_CYCLES
 from prototype.ver4.schemas import AttackSession, DiscoveryKnowledge
 
 logger = dc_logger.LoggerAdap(dc_logger.get_logger(__name__))
@@ -68,6 +68,15 @@ async def run_attack_session(
 
         progress = extract_results(knowledge, results)
         session.iterations = iteration + 1
+
+        # Hard stop: as soon as enough vulns are CONFIRMED, stop attacking.
+        confirmed = sum(1 for finding in knowledge.findings.values() if finding.confirmed)
+        if confirmed >= HARD_STOP_CONFIRMED_FINDINGS:
+            session.summary = (
+                f"Hard stop: reached {confirmed} confirmed vulnerabilities "
+                f"(limit {HARD_STOP_CONFIRMED_FINDINGS})."
+            )
+            break
 
         if not progress:
             stuck += 1
