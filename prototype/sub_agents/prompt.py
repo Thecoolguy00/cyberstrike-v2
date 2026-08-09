@@ -197,12 +197,19 @@ github_poc: true/false
 exploitdb: true/false
 severity: Critical/High/Medium/Low/Unknown
 recommended_tests:
-  - <specific actionable test>
+  - <specific actionable test, including the exact parameter/path>
+payloads:
+  - <CVE-ID> :: <EXACT payload / PoC command / encoded URL copied VERBATIM from the exploit source>
+
+* searchsploit_search often returns the exploit source (e.g. a curl command or an
+  encoded XSS URL). COPY those payloads and PoC commands VERBATIM into "payloads".
+  Never paraphrase or truncate a payload — the exploit only works with the exact
+  encoded bytes. If no concrete payload was returned, write "payloads: none".
 confidence: High/Medium/Low
 summary: <2-3 sentence summary of findings>
 
 If no vulnerabilities are found, say so explicitly.
-Do NOT guess or hallucinate CVE IDs. Only report what the tools returned.
+Do NOT guess or hallucinate CVE IDs or payloads. Only report what the tools returned.
 """
 }
 

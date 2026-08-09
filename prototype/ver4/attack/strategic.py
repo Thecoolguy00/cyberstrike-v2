@@ -63,10 +63,14 @@ def resolve_attack_objective(query: str, knowledge: DiscoveryKnowledge, target: 
 
     return (
         f"Scoped attack on {target}. "
-        f"User-requested focus: {', '.join(requested) or 'general assessment'}. "
-        f"Untested CVEs from intel: {cves_str}. "
+        f"FIRST priority: verify the UNVERIFIED CVEs the exploit-intel already returned "
+        f"(they include CVE, severity, PoC and methodology) — confirm present/absent with "
+        f"evidence using that methodology. "
+        f"Unverified CVEs from intel: {cves_str}. "
+        f"User-requested focus: {', '.join(requested) or 'general assessment'} (only after the CVEs above). "
         f"Surface available: {len(knowledge.endpoints)} endpoints, "
         f"{len(knowledge.inputs)} input points, {len(knowledge.technologies)} technologies, "
         f"{len(knowledge.content_hits)} content hits. "
-        "Confirm exploitable issues with evidence; never touch any target outside this scope."
+        "Reuse the intel methodology instead of redispatching generic checks; never touch "
+        "any target outside this scope."
     )

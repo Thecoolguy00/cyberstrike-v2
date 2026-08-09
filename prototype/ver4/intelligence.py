@@ -135,11 +135,49 @@ def _recommended_tests(text: str) -> List[str]:
             if started:
                 break
             continue
-        if stripped.lower().startswith(("summary", "confidence")):
+        if stripped.lower().startswith(("summary", "confidence", "payloads")):
             break
         started = True
         tests.append(stripped.lstrip("- *•"))
     return [item for item in tests if item][:8]
+
+
+_STOP_HEADERS = (
+    "technology:", "version:", "known_vulnerabilities:", "public_exploit:",
+    "github_poc:", "exploitdb:", "severity:", "recommended_tests:",
+    "confidence:", "summary:",
+)
+
+
+def _payloads(text: str) -> List[str]:
+    """Extract the verbatim payload/PoC lines from the payloads: block."""
+    marker = re.search(r"^payloads\s*:", text, re.I | re.M)
+    if not marker:
+        return []
+    payloads: List[str] = []
+    current = None
+    for line in text[marker.end():].splitlines():
+        stripped = line.strip()
+        low = stripped.lower()
+        if not stripped:
+            if current is not None:
+                payloads.append(current)
+                current = None
+            continue
+        if any(low.startswith(header) for header in _STOP_HEADERS):
+            break
+        if stripped.startswith(("-", "*", "•")):
+            if current is not None:
+                payloads.append(current)
+            current = stripped.lstrip("- *•").strip()
+        elif current is not None:
+            # continuation line of a multi-line payload (e.g. a long encoded URL)
+            current = current + " " + stripped
+        else:
+            current = stripped
+    if current is not None:
+        payloads.append(current)
+    return [item for item in payloads if item][:6]
 
 
 def parse_intel_report(text: str) -> Optional[Dict[str, Any]]:
@@ -166,6 +204,7 @@ def parse_intel_report(text: str) -> Optional[Dict[str, Any]]:
         "poc": _parse_bool(_field(text, "public_exploit")) or _parse_bool(_field(text, "exploitdb")),
         "github_poc": _parse_bool(_field(text, "github_poc")),
         "recommended_tests": _recommended_tests(text),
+        "payloads": _payloads(text),
         "summary": _field(text, "summary"),
     }
 
@@ -183,6 +222,7 @@ def _apply_intel_result(knowledge: DiscoveryKnowledge, text: str, location_by_ke
         poc=parsed["poc"] or parsed["github_poc"],
         description=parsed["summary"],
         recommended_tests=parsed["recommended_tests"],
+        payloads=parsed["payloads"],
         tested=False,
         sources=["intel_a"],
     )
@@ -196,6 +236,7 @@ def _apply_intel_result(knowledge: DiscoveryKnowledge, text: str, location_by_ke
         if existing.severity in {"Critical", "High", "Medium"}:
             item.severity = item.severity if item.severity in {"Critical", "High", "Medium"} else existing.severity
         item.recommended_tests = existing.recommended_tests or item.recommended_tests
+        item.payloads = existing.payloads or item.payloads
         item.sources = sorted(set(existing.sources + item.sources))
     knowledge.exploit_intelligence[key] = item
     return True

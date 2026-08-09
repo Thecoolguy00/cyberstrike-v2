@@ -139,6 +139,7 @@ class ExploitIntel(BaseModel):
     poc: bool = False
     description: str = ""
     recommended_tests: List[str] = Field(default_factory=list)
+    payloads: List[str] = Field(default_factory=list, description="Exact exploit payloads / PoC commands copied verbatim (the exploit only works with these)")
     tested: bool = False
     sources: List[str] = Field(default_factory=list)
 

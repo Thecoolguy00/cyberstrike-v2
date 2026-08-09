@@ -54,11 +54,18 @@ def _knowledge_digest(state: Dict) -> str:
 
     untested = [item for item in knowledge.exploit_intelligence.values() if item.cve and not item.tested]
     if untested:
-        lines.append("UNTESTED CVEs:")
-        for item in untested:
-            lines.append(f"  {item.cve} ({item.technology} {item.version}) severity={item.severity}")
+        lines.append("UNVERIFIED CVEs FROM EXPLOIT INTEL (verify these FIRST):")
+        for index, item in enumerate(untested, 1):
+            lines.append(f"  {index}. {item.cve} ({item.technology} {item.version}) "
+                         f"severity={item.severity} poc={'YES' if item.poc else 'no'} location={item.location or '?'}")
+            if item.description:
+                lines.append(f"      note: {str(item.description).strip()[:200]}")
+            if item.recommended_tests:
+                lines.append(f"      methodology: {'; '.join(item.recommended_tests[:4])}")
+            if item.payloads:
+                lines.append(f"      EXACT PAYLOAD: {' | '.join(item.payloads[:3])}")
     else:
-        lines.append("UNTESTED CVEs: none")
+        lines.append("UNVERIFIED CVEs FROM EXPLOIT INTEL: none")
 
     if knowledge.findings:
         lines.append(f"FINDINGS SO FAR ({len(knowledge.findings)}):")
@@ -95,24 +102,32 @@ def filter_task_list(tasks: List[Task], state: Dict) -> Tuple[List[Task], int, i
 
 def cve_verification_tasks(state: Dict) -> List[Task]:
     """
-    Auto-inject verification tasks for untested CVEs — but ONLY for technologies
-    that are part of the scoped web target's stack. This stops SSH/RTSP/mislabelled
-    intel CVEs from being verified against the web application being attacked.
+    Auto-inject verification tasks for untested CVEs that belong to the scoped
+    target's web stack (technologies + identified web services). The verification
+    task carries the intel methodology (recommended_tests / note) so the agent
+    reuses the exploit intelligence instead of redoing generic checks.
     """
     knowledge = state["knowledge"]
     target = state["target"]
     history_descs = {str(entry.get("task", "")).lower() for entry in state.get("execution_history", [])}
 
+    # Web stack = fingerprinted technologies + identified application/services.
     web_tech = {name.strip().lower() for name in knowledge.technologies}
+    web_tech |= {str(info.get("name") or "").strip().lower() for info in knowledge.services.values() if info.get("name")}
     tasks: List[Task] = []
     for key, item in sorted(knowledge.exploit_intelligence.items()):
         if not item.cve or item.tested:
             continue
         if item.technology.strip().lower() not in web_tech:
-            continue  # non-web (or unrecognised) service — leave verification to a dedicated session
+            continue  # not part of the target's web stack — leave for a dedicated session
+        methodology = _methodology_hint(item)
         for cve_id in CVE_RE.findall(item.cve):
             scope = item.location or target
-            description = f"{AGENT_TASK_PHASE_PREFIX} Verify vulnerability {cve_id} for {item.technology} {item.version} on {scope}"
+            description = (
+                f"{AGENT_TASK_PHASE_PREFIX} Verify vulnerability {cve_id} for "
+                f"{item.technology} {item.version} on {scope}. {methodology} "
+                "Confirm present/absent with evidence."
+            )
             if description.lower() in history_descs:
                 continue
             key_slug = re.sub(r"[^a-zA-Z0-9_]", "_", key).lower()
@@ -128,6 +143,20 @@ def cve_verification_tasks(state: Dict) -> List[Task]:
     return tasks
 
 
+def _methodology_hint(item) -> str:
+    """Compact methodology string from the intel entry, when present."""
+    hints = []
+    if item.poc:
+        hints.append("a public PoC/exploit was found")
+    if item.description:
+        hints.append(str(item.description).strip()[:200])
+    if item.recommended_tests:
+        hints.append("Recommended tests: " + "; ".join(item.recommended_tests[:4]))
+    if item.payloads:
+        hints.append("USE THIS EXACT PAYLOAD: " + " | ".join(item.payloads[:3]))
+    return "Methodology: " + " ".join(hints) if hints else "Test the identified CVE directly."
+
+
 def _tactical_system_prompt(state: Dict) -> str:
     return f"""You are a tactical task planner for ONE scoped attack session (internal phase: attack_analysis).
 
@@ -137,10 +166,13 @@ AND start with the prefix "{AGENT_TASK_PHASE_PREFIX}" (this is the agent-recogni
 SESSION OBJECTIVE:
 {state['objective']}
 
-PRIORITY:
-1. User-requested vulnerability type (see objective).
-2. Test known CVEs listed as UNTESTED — schedule verification tasks.
-3. Input-based testing (XSS via xss_a; SQLi / template / command injection via http_a / python_a).
+PRIORITY (highest first):
+1. VERIFY every UNVERIFIED CVE from the EXPLOIT INTEL block. It already ships the
+   CVE, severity, PoC status, location and methodology — confirm present/absent with
+   evidence. These come first and usually need no extra discovery.
+2. User-requested vulnerability type (see objective), unless a CVE above already covers it.
+3. Only AFTER known CVEs are handled: input-based testing (XSS via xss_a;
+   SQLi / template / command injection via http_a / python_a).
 4. Endpoint-based checks (backup files, source disclosure, directory listing via ferox_a / http_a).
 5. Configuration checks (CORS, clickjacking, cookie flags, secret leaks in JS/bodies).
 
@@ -153,6 +185,11 @@ AGENTS AVAILABLE:
 
 RULES:
 - The knowledge graph is the source of truth; only interact with the scoped target.
+- USE THE DATA YOU ALREADY HAVE FIRST. The EXPLOIT INTEL block gives exact CVEs, PoCs
+  and methodology — reuse it to verify, instead of blindly redispatching fresh agents
+  for generic checks. Skip redundant checks the methodology already covers (e.g. do not
+  re-run XSS on every input box when a reflected-XSS CVE with a PoC is being verified
+  against that same page; do not re-check headers merely to "collect" them).
 - Never repeat work already in EXECUTION HISTORY.
 - Batch truly independent tasks with empty depends_on; use depends_on for real ordering.
 - Only plan tasks that are executable right now.
