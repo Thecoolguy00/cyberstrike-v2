@@ -8,6 +8,11 @@ from prototype.ver4.schemas import Capability, DiscoveryBudget, DiscoveryStatus,
 from prototype.ver4.runtime.base import DiscoveryRuntime
 
 
+def _is_certificate_error(response: Dict) -> bool:
+    error = str(response.get("error") or "").lower()
+    return "certificate verify failed" in error or "self-signed certificate" in error
+
+
 async def extract_javascript(runtime: DiscoveryRuntime, scripts: List[str], budget: DiscoveryBudget) -> Tuple[List[Observation], Dict[str, Endpoint]]:
     observations = []
     endpoints: Dict[str, Endpoint] = {}
@@ -15,6 +20,17 @@ async def extract_javascript(runtime: DiscoveryRuntime, scripts: List[str], budg
     for script in scripts[:budget.max_js_files]:
         try:
             response = await runtime.http_request("GET", script, budget.max_body_size, budget.max_redirects)
+            if script.lower().startswith("https://") and _is_certificate_error(response):
+                retry = await runtime.http_request(
+                    "GET",
+                    script,
+                    budget.max_body_size,
+                    budget.max_redirects,
+                    verify_ssl=False,
+                )
+                retry["_tls_verified"] = False
+                retry["_tls_warning"] = str(response.get("error"))
+                response = retry
             body = str(response.get("body") or "")
             parsed = parse_javascript(body, script)
             for endpoint in parsed["api_endpoints"] + parsed["urls"]:

@@ -3,20 +3,20 @@ from prototype.mcp_stuff.background_tasks import launch_background_task
 from prototype.mcp_stuff.kali_command import CommandRunner
 
 #change the path to absolute path after moving it to kali
-ASSET_WORDLIST = Path(__file__).resolve().parent / "assets" / "short.txt"
+small_wordlist = Path("prototype/mcp_stuff/assets/short.txt")
 
 
 def feroxbuster_foreground_action(target: str) -> str:
     """Run a foreground feroxbuster scan using the bundled asset wordlist."""
-    if not ASSET_WORDLIST.exists():
-        return f"error: wordlist not found: {ASSET_WORDLIST}"
+    if not small_wordlist.exists():
+        return f"error: wordlist not found: {small_wordlist}"
 
     command = [
         "feroxbuster",
         "-u",
         target,
         "-w",
-        str(ASSET_WORDLIST),
+        str(small_wordlist),
     ]
     return CommandRunner("feroxbuster", timeout=300).execute(command)
 
