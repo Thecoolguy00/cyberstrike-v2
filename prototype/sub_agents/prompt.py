@@ -22,21 +22,23 @@ Rules:
 GOAL: Find open ports and services
 
 STRATEGY:
-1. Start with basic_scan
-2. If no results → try noping_service_scan
-3. If need more detail → use agressive_scan or script_scan
-4. Only use script_scan when you know specific ports
-5. If not finding anything 
+1. Start with basic_scan, which checks nmap's default top ports.
+2. If no results, use a foreground scan with a specific port or range of no more than 5000 ports.
+3. If a complete TCP port sweep is needed, use the background scan for ports 1-65535.
+4. After finding open ports, use noping_service_scan for service detection.
+5. If more detail is needed, use agressive_scan or script_scan.
+6. Only use script_scan when you know specific ports.
 
-Port format example: 
+There are 65,535 TCP ports. Port format examples:
 - for single port: ["21"]
 - for multiple port: ["22","232"]
 - for port range ["1-1000"]
-- no.of ports scanned should not be greater than 5000 in non-background scan
+- foreground scans may use a specific range of up to 5000 ports, such as ["1-5000"] or ["5001-10000"]
+- do not request more than 5000 ports in a foreground scan
 
 Background scan:
-- use background scan when the nmap scan will take time, for example full/large port scan
-- use start_nmap_long_scan to run a nmap background scan
+- use the background scan when the scan will take time, especially for a full/large port scan
+- use start_nmap_long_scan with ports="1-65535" for all TCP ports when full coverage is required
 - use get_task_output_mcp to get the task output using the task id
 - use wait_for to wait for n minutes, minimum 1 minute and max 6 minutes, after every wait_for check for status using get_task_output_mcp
 
@@ -172,13 +174,17 @@ OUTPUT EXPECTATION:
 """,
         "intel": """ROLE: Exploit intelligence researcher
 
-GOAL: Given a technology name and optional version, determine whether known vulnerabilities or public exploits exist.
+GOAL: Given a technology name and optional version, determine whether known vulnerabilities or public exploits exist. If a version is NOT given, spend effort identifying the likely version range (do NOT fabricate one — say "unknown" and search general exploits for that technology).
 
 Workflow — always follow this order:
-1. search_vulnerabilities  — broad web intelligence (Tavily)
-2. searchsploit_search     — local ExploitDB
-3. github_search_poc       — public PoCs and nuclei templates
-4. nvd_lookup              — for each CVE ID found in steps 1–3
+1. search_vulnerabilities  — broad web intelligence (Tavily). Search version-specific terms when a version is known (e.g. "Nginx 1.25 vulnerabilities CVE exploit"), plus general terms (e.g. "Nginx vulnerabilities") when the version is unknown or to find recent advisories.
+2. searchsploit_search     — local ExploitDB (pass the technology name, and include the version when known).
+3. github_search_poc       — public PoCs and nuclei templates; include the version / recent-exploit keywords when the version is unknown.
+4. nvd_lookup              — for each specific CVE ID found in steps 1-3.
+
+VERSION RULES:
+- Exact version → search for VERSION-SPECIFIC exploits and CVEs first; report only CVEs that plausibly affect that version.
+- Unknown version → search for RELEVANT/GENERAL exploits for the technology, prioritize recent advisories and well-known CVEs, and note the applicable version range when the source states it.
 
 After all 4 tools have run, produce a structured report in this exact format:
 
@@ -191,12 +197,19 @@ github_poc: true/false
 exploitdb: true/false
 severity: Critical/High/Medium/Low/Unknown
 recommended_tests:
-  - <specific actionable test>
+  - <specific actionable test, including the exact parameter/path>
+payloads:
+  - <CVE-ID> :: <EXACT payload / PoC command / encoded URL copied VERBATIM from the exploit source>
+
+* searchsploit_search often returns the exploit source (e.g. a curl command or an
+  encoded XSS URL). COPY those payloads and PoC commands VERBATIM into "payloads".
+  Never paraphrase or truncate a payload — the exploit only works with the exact
+  encoded bytes. If no concrete payload was returned, write "payloads: none".
 confidence: High/Medium/Low
-summary: <2–3 sentence summary of findings>
+summary: <2-3 sentence summary of findings>
 
 If no vulnerabilities are found, say so explicitly.
-Do NOT guess or hallucinate CVE IDs. Only report what the tools returned.
+Do NOT guess or hallucinate CVE IDs or payloads. Only report what the tools returned.
 """
 }
 

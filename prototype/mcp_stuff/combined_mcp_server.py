@@ -1,13 +1,16 @@
 from mcp.server.fastmcp import FastMCP
 from typing import Dict, List, Sequence, Union, Optional
-from pathlib import Path
 
 mcp=FastMCP(name="combined_tools",host="0.0.0.0",port=4545)
 
 #nmap for network scan
-from prototype.mcp_stuff.kali_command import CommandRunner
-nmap_port_mapper=CommandRunner.port_args
-from prototype.mcp_stuff.nmap_actions import basic_scan_action,script_scan_action,aggressive_scan_action,noping_version_scan_action
+from prototype.mcp_stuff.nmap_actions import (
+    basic_scan_action,
+    script_scan_action,
+    aggressive_scan_action,
+    noping_version_scan_action,
+    start_nmap_long_scan_action,
+)
 
 #helper fucntion for normalising ports
 
@@ -38,10 +41,17 @@ def is_large_port_range(p: str, max_span: int = 5000) -> bool:
 
 @mcp.tool()
 def basic_scan(target: str) ->str:
-    """Perform a basic network scan using nmap.
+    """Perform a basic network scan using nmap's default port set.
+
+    This runs ``nmap <target>`` without a ``-p`` option, so nmap checks its
+    default top 1000 TCP ports. Use ``noping_version_scan`` or
+    ``aggressive_scan`` when a specific port or range is required. Use
+    ``start_nmap_long_scan`` with ``ports="1-65535"`` for a complete TCP
+    port sweep.
 
     Args:
-        target (str): The target IP address or hostname to scan.
+        target (str): Target IP address or hostname. Only scan systems you
+            are authorized to assess.
 
     Returns:
         str: The output results of the basic scan.
@@ -50,11 +60,18 @@ def basic_scan(target: str) ->str:
 
 @mcp.tool()
 def aggressive_scan(target: str, ports: Optional[Union[str, List[str]]] = None) -> str:
-    """Perform an nmap aggressive network scan using -A parameter(includes OS detection, version detection, default script scanning, and traceroute)
+    """Run an aggressive nmap scan with OS, service, script, and traceroute detection.
+
+    Uses ``-T4 -A``. If ``ports`` is omitted, nmap uses its default top 1000
+    TCP ports. Foreground scans must not request a range larger than 5000
+    ports. For a full 1-65535 scan, use ``start_nmap_long_scan`` instead.
 
     Args:
-        target (str): The target IP address or hostname to scan.
-        ports (list): The list of ports to scan (optional)
+        target (str): Target IP address or hostname. Only scan systems you
+            are authorized to assess.
+        ports (str | list[str], optional): Port expression, such as ``"80"``,
+            ``"22,80,443"``, or ``"1-5000"``. Foreground ranges are limited
+            to 5000 ports.
 
     Returns:
         str: The output results of the intense scan.
@@ -69,11 +86,19 @@ def aggressive_scan(target: str, ports: Optional[Union[str, List[str]]] = None) 
 
 @mcp.tool()
 def noping_version_scan(target: str, ports: Optional[Union[str, List[str]]] = None) -> str:
-    """Perform an nmap service scan with ping diabled, this is the recommened scan w/wo ports.
+    """Detect services and versions without host discovery ping.
+
+    Uses ``-Pn -sV`` and is useful when ICMP or host discovery is blocked. If
+    ``ports`` is omitted, nmap uses its default top 1000 TCP ports. Foreground
+    scans may specify a range of up to 5000 ports. Use
+    ``start_nmap_long_scan`` with ``ports="1-65535"`` for all TCP ports.
 
     Args:
-        target (str): The target IP address or hostname to scan.
-        ports (list): The list of ports to scan (optional)
+        target (str): Target IP address or hostname. Only scan systems you
+            are authorized to assess.
+        ports (str | list[str], optional): Port expression, such as ``"80"``,
+            ``"22,80,443"``, or ``"1-5000"``. Foreground ranges are limited
+            to 5000 ports.
 
     Returns:
         str: The output results of the recommended scan.
@@ -88,12 +113,20 @@ def noping_version_scan(target: str, ports: Optional[Union[str, List[str]]] = No
 
 @mcp.tool()
 def script_scan(target: str, script: str, ports: Optional[Union[str, List[str]]] = None) -> str:
-    """Perform an nmap script scan on specified port and target
+    """Run a specified nmap NSE script against known target ports.
+
+    Uses ``-sV --script=<script>``. Provide specific discovered ports rather
+    than using this tool for initial port discovery. Foreground scans must not
+    request a range larger than 5000 ports. Use
+    ``start_nmap_long_scan`` for a full 1-65535 port discovery scan first.
 
     Args:
-        target (str): The target IP address or hostname to scan.
-        script (str): The specific nmap script
-        ports (list): The list of ports to scan
+        target (str): Target IP address or hostname. Only scan systems you
+            are authorized to assess.
+        script (str): NSE script name or script expression to run.
+        ports (str | list[str], optional): Known port expression, such as
+            ``"80"`` or ``"22,80,443"``. Foreground ranges are limited to
+            5000 ports.
 
     Returns:
         str: The output results of the script scan.
@@ -193,9 +226,8 @@ def xsstrike_basic_scan(target:str)->str:
 
     return xsstrike_basic_scan_action(target=target)
 
-
 #long running tasks specific function
-from prototype.mcp_stuff.background_tasks import launch_background_task, get_background_task_status, get_task_by_id, get_task_output
+from prototype.mcp_stuff.background_tasks import get_background_task_status, get_task_by_id, get_task_output
 
 @mcp.tool()
 def start_nmap_long_scan(
@@ -203,27 +235,41 @@ def start_nmap_long_scan(
     ports: Union[str, List[str]] = None,
     max_runtime: int = 900
 ) -> Dict:
-    """
-    Start a long-running nmap scan in background.
+    """Start a long-running nmap scan in the background.
+
+    Use this tool for scans that may take time, especially a complete TCP
+    port sweep. There are 65,535 TCP ports. To scan every TCP port, pass
+    ``ports="1-65535"``. Unlike the foreground nmap tools, this background
+    path is intended for large ranges. If ``ports`` is omitted, the scan
+    defaults to ``1-9000``; it does not scan all 65,535 ports automatically.
+    Poll the returned task with ``get_task`` or retrieve output with
+    ``get_task_output_mcp`` after waiting for the task to progress.
 
     Args:
-        target (str): The target IP address or hostname to scan.
-        ports (list): The list of ports to scan (optional), defaults to "1-9000"
+        target (str): Target IP address or hostname. Only scan systems you
+            are authorized to assess.
+        ports (str | list[str], optional): Nmap port expression, such as
+            ``"1-65535"`` for all TCP ports, ``"1-5000"`` for a range, or
+            ``"22,80,443"`` for selected ports. Defaults to ``"1-9000"``.
+        max_runtime (int): Maximum runtime in seconds before the task expires.
 
     """
-    task_id, output_file = launch_background_task(
-        cmd="nmap",
-        args=nmap_port_mapper(normalize_ports(ports=ports or "1-9000")) + [target],
-        max_runtime=max_runtime
+    return start_nmap_long_scan_action(
+        target=target,
+        ports=ports,
+        max_runtime=max_runtime,
     )
 
-    return {
-        "task_id": task_id,
-        "status": "started",
-        "output_file": str(output_file),
-        "max_runtime": max_runtime
-    }
+#feroxbuster
+from prototype.mcp_stuff.feroxbuster_actions import (
+    feroxbuster_foreground_action,
+    start_feroxbuster_action,
+)
 
+@mcp.tool()
+def foreground_feroxbuster(target: str) -> str:
+    """Run a foreground feroxbuster scan with the bundled asset wordlist. intended to be used for Discovery L1"""
+    return feroxbuster_foreground_action(target=target)
 
 #TODO: add option for wordlists, names instead of path, point the wordlists name to its path using a dict
 @mcp.tool()
@@ -238,25 +284,7 @@ def start_feroxbuster(
     Args:
         target (str): The url of the webapp
     """
-    wordlist = "/usr/share/wordlists/dirb/common.txt"
-
-    if not Path(wordlist).exists():
-        return {
-            "error": "wordlist not found",
-            "status": "failed"
-        }
-    
-    # Basic feroxbuster args
-    args = ["-u", target, "-w", wordlist]
-
-    task_id, output_file = launch_background_task(cmd="feroxbuster", args=args, max_runtime=max_runtime)
-
-    return {
-        "task_id": task_id,
-        "status": "started",
-        "output_file": str(output_file),
-        "max_runtime": max_runtime
-    }
+    return start_feroxbuster_action(target=target, max_runtime=max_runtime)
 
 @mcp.tool()
 def get_task_output_mcp(task_id: str) -> str:
@@ -321,10 +349,28 @@ def searchsploit_search(technology: str) -> str:
     """
     return searchsploit_lookup(technology)
 
+from prototype.mcp_stuff.cat_actions import cat_file_action
+
+@mcp.tool()
+def cat(filepath: str) -> str:
+    """
+    Read and return the contents of a local file on the MCP host.
+
+    Primarily used to fetch ExploitDB .txt exploit files returned by
+    ``searchsploit_search`` (e.g. /usr/share/exploitdb/exploits/python/webapps/51636.txt).
+
+    Args:
+        filepath (str): Absolute path to the file to read.
+
+    Returns:
+        str: File contents (truncated to a safe size) or an error message.
+    """
+    return cat_file_action(filepath)
+
 
 if __name__=="__main__":
     print("mcp server started")
     try:
         mcp.run(transport="streamable-http")
     except KeyboardInterrupt:
-        print("Shutting down MCP server...") 
+        print("\nShutting down MCP server cleanly...")

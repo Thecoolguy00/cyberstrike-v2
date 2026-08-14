@@ -57,7 +57,7 @@ async def init_graph():
         response=invoke_and_validate(llm=groq_llm, messages=messages)
         messages=messages+[response]
 
-        return await response_route(response)
+        return response_route(response)
     
     #graph
     flow=StateGraph(NmapState)
@@ -78,7 +78,7 @@ async def init_graph():
     )
     flow.add_edge("tools","python_agent")
     flow.add_edge("mcp_exec","python_agent")
-    graph=flow.compile()
+    graph=flow.compile().with_config({"run_name": "Python Request Graph"})
 
     return graph
 

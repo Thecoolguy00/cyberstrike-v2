@@ -206,7 +206,7 @@ flow.add_conditional_edges(
 
 flow.add_edge("merge_knowledge", "strategic")
 
-graph = flow.compile()
+graph = flow.compile().with_config({"run_name": "Master Pentest Graph"})
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
@@ -230,7 +230,6 @@ def run_pentest(query: str, max_global_iterations: int = 200, verbose: bool = Tr
         "vuln_nudge":            None,
         "checked_vulns":         [],
         "final_answer":          "",
-        "thinking":              "",
         "last_node":             "",
         "metrics": {
             "cycles": 0,
@@ -270,6 +269,9 @@ def run_pentest(query: str, max_global_iterations: int = 200, verbose: bool = Tr
 
 
 if __name__ == "__main__":
-    print("starting test-1")
-    result = run_pentest(query="target ip: 10.48.152.206, focus on xss")
-    print("result:", result)
+    try:
+        print("starting test-1")
+        result = run_pentest(query="target ip: 10.64.167.110, focus on xss")
+        print("result:", result)
+    except KeyboardInterrupt:
+        print("\nPentest interrupted. Exiting cleanly.")

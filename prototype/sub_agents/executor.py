@@ -51,7 +51,7 @@ async def _run_agent(agent_graph, task: str) -> str:
         return f"Agent execution failed: {str(e)}"
 
 
-async def execute_plan_parallel(plan: List[dict], verbose: bool = True) -> List[Dict[str, str]]:
+async def execute_plan_parallel(plan: List[dict], verbose: bool = True, max_concurrency: int = 5) -> List[Dict[str, str]]:
     """
     Execute a plan respecting task dependencies.
 
@@ -59,12 +59,15 @@ async def execute_plan_parallel(plan: List[dict], verbose: bool = True) -> List[
     1. Build a set of completed task_ids.
     2. Each iteration: collect all tasks whose depends_on are fully in
        completed — these are the "ready" layer.
-    3. Run the ready layer concurrently with asyncio.gather.
+    3. Run the ready layer concurrently with asyncio.gather, bounded by a
+       semaphore so at most ``max_concurrency`` agents run at once.
     4. Repeat until all tasks are done or a deadlock is detected.
 
     Tasks without a task_id (legacy format) are assigned a generated id
     and treated as having no dependencies so they all run in one parallel batch.
     """
+    max_concurrency = max(1, int(max_concurrency))
+    semaphore = asyncio.Semaphore(max_concurrency)  # bounded concurrency pool
     # Normalise — assign task_ids to tasks that are missing one (backward compat)
     normalised = []
     for i, t in enumerate(plan):
@@ -97,43 +100,44 @@ async def execute_plan_parallel(plan: List[dict], verbose: bool = True) -> List[
             )
 
         async def _run_one(task: dict) -> Dict[str, str]:
-            agent = task["agent"]
-            desc  = task["task_description"]
+            async with semaphore:  # keep at most max_concurrency agents active
+                agent = task["agent"]
+                desc  = task["task_description"]
             
-            # Inject dependency outputs to provide target/results context
-            deps = task.get("depends_on", [])
-            if deps:
-                dep_context = []
-                for dep_id in deps:
-                    if dep_id in completed:
-                        dep_context.append(f"Result of '{dep_id}': {completed[dep_id]}")
-                if dep_context:
-                    desc = desc + "\n\nContext from prerequisites:\n" + "\n".join(dep_context)
+                # Inject dependency outputs to provide target/results context
+                deps = task.get("depends_on", [])
+                if deps:
+                    dep_context = []
+                    for dep_id in deps:
+                        if dep_id in completed:
+                            dep_context.append(f"Result of '{dep_id}': {completed[dep_id]}")
+                    if dep_context:
+                        desc = desc + "\n\nContext from prerequisites:\n" + "\n".join(dep_context)
             
-            status = "SUCCESS"
-            if agent not in AGENT_MAP:
-                result = f"Unknown agent: {agent}"
-                status = "FAILED"
-            else:
-                if verbose:
-                    logger.info(f"  -> [{agent}] {desc[:200]}")
-                try:
-                    result = await _run_agent(AGENT_MAP[agent], desc)
-                    if "execution failed" in result.lower():
-                        status = "FAILED"
-                except Exception as e:
-                    result = f"Agent execution failed: {str(e)}"
+                status = "SUCCESS"
+                if agent not in AGENT_MAP:
+                    result = f"Unknown agent: {agent}"
                     status = "FAILED"
-                if verbose:
-                    logger.info(f"  <- [{agent}] {result[:200]}")
-            return {
-                "agent": agent,
-                "task": desc,
-                "result": result,
-                "_task_id": task["task_id"],
-                "status": status,
-                "coverage_keys": task.get("coverage_keys", [])
-            }
+                else:
+                    if verbose:
+                        logger.info(f"  -> [{agent}] {desc[:200]}")
+                    try:
+                        result = await _run_agent(AGENT_MAP[agent], desc)
+                        if "execution failed" in result.lower():
+                            status = "FAILED"
+                    except Exception as e:
+                        result = f"Agent execution failed: {str(e)}"
+                        status = "FAILED"
+                    if verbose:
+                        logger.info(f"  <- [{agent}] {result[:200]}")
+                return {
+                    "agent": agent,
+                    "task": desc,
+                    "result": result,
+                    "_task_id": task["task_id"],
+                    "status": status,
+                    "coverage_keys": task.get("coverage_keys", [])
+                }
 
         batch_results = await asyncio.gather(*[_run_one(t) for t in ready])
 

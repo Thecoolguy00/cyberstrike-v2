@@ -66,7 +66,7 @@ async def init_graph():
         response=invoke_and_validate(llm=groq_llm, messages=messages)
         messages=messages+[response]
 
-        return await response_route(response)
+        return response_route(response)
     
     #graph, maybe modularise this
     flow=StateGraph(NmapState)
@@ -87,7 +87,7 @@ async def init_graph():
     )
     flow.add_edge("tools","nmap_agent")
     flow.add_edge("mcp_exec","nmap_agent")
-    graph=flow.compile()
+    graph=flow.compile().with_config({"run_name": "Nmap Discovery Graph"})
 
     return graph
 

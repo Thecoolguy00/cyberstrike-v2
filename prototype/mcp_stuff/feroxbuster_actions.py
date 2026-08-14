@@ -1,53 +1,52 @@
-from prototype.mcp_stuff.background_tasks import launch_background_task, wait_for_task
 from pathlib import Path
-import asyncio
+from prototype.mcp_stuff.background_tasks import launch_background_task
+from prototype.mcp_stuff.kali_command import CommandRunner
 
-async def run_feroxbuster(
-    url: str,
-    wordlist: str = "/usr/share/wordlists/dirb/common.txt",
-    runtime: int = 120,
-    poll_interval:int=2
-) -> str:
+#change the path to absolute path after moving it to kali
+small_wordlist = Path("prototype/mcp_stuff/assets/short.txt")
+
+
+def feroxbuster_foreground_action(target: str) -> str:
+    """Run a foreground feroxbuster scan using the bundled asset wordlist."""
+    if not small_wordlist.exists():
+        return f"error: wordlist not found: {small_wordlist}"
+
+    command = [
+        "feroxbuster",
+        "-u",
+        target,
+        "-w",
+        str(small_wordlist),
+    ]
+    return CommandRunner("feroxbuster", timeout=300).execute(command)
+
+def start_feroxbuster_action(target: str, max_runtime: int = 900) -> dict:
     """
-    This is a deprecated version
-    Launch feroxbuster in background, wait 'runtime' seconds,
-    then fetch and return results.
+    Start a feroxbuster directory brute-force scan in the background.
+
+    Args:
+        target: The URL of the web application to scan
+        max_runtime: Maximum runtime in seconds before the task expires
+
+    Returns:
+        dict: Task information including task_id, status, output_file, and max_runtime
     """
+    wordlist = "/usr/share/wordlists/dirb/common.txt"
+
     if not Path(wordlist).exists():
-        return "wordlist not found"
+        return {
+            "error": "wordlist not found",
+            "status": "failed"
+        }
 
     # Basic feroxbuster args
-    args = ["-u", url, "-w", wordlist]
+    args = ["-u", target, "-w", wordlist]
 
-    # Launch background task
-    task_id, output_file = launch_background_task("feroxbuster", args, max_runtime=runtime)
+    task_id, output_file = launch_background_task(cmd="feroxbuster", args=args, max_runtime=max_runtime)
 
-    print(f"[+] Feroxbuster started (Task ID: {task_id})")
-    print(f"    Output file: {output_file}")
-
-    # Wait for it asynchronously
-    res = await wait_for_task(task_id, timeout=runtime,poll_interval=poll_interval)
-
-    # Handle timeout case
-    if res is None:
-        p = Path(output_file)
-        if p.exists():
-            try:
-                return p.read_text(errors="ignore")
-            except Exception:
-                return "Timed out and could not read output file"
-        return "Timed out and no output available"
-
-    # If task completed
-    output_path = Path(res.get("output_file", output_file))
-    if output_path.exists():
-        try:
-            return output_path.read_text(errors="ignore")
-        except Exception:
-            return "Completed, but failed to read output file"
-
-    return "No output found"
-
-# Standalone runner
-if __name__ == "__main__":
-    asyncio.run(run_feroxbuster("http://example.com", runtime=120,poll_interval=2))
+    return {
+        "task_id": task_id,
+        "status": "started",
+        "output_file": str(output_file),
+        "max_runtime": max_runtime
+    }

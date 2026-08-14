@@ -32,7 +32,7 @@ def search_vulnerabilities(technology: str, version: Optional[str] = None) -> st
         str: Combined search results from multiple targeted queries
     """
     queries = [
-        f"{technology} vulnerabilities",
+        # f"{technology} vulnerabilities",
         f"{technology} CVE exploit",
     ]
     if version:

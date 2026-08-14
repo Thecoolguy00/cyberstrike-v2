@@ -43,7 +43,7 @@ async def init_graph():
         ]
 
         response = invoke_and_validate(llm=http_llm, messages=messages)
-        return await response_route(response)
+        return response_route(response)
 
     flow = StateGraph(HttpState)
     flow.add_node("mcp_exec",   mcp_exec_node)
@@ -59,6 +59,6 @@ async def init_graph():
     flow.add_edge("tools",    "http_agent")
     flow.add_edge("mcp_exec", "http_agent")
 
-    return flow.compile()
+    return flow.compile().with_config({"run_name": "HTTP Inspection Graph"})
 
 graph = asyncio.run(init_graph())

@@ -32,6 +32,7 @@ from prototype.sub_agents.schemas import (
     TacticalExtraction,
     MasterState,
     PHASE_AGENT_MAP,
+    CoverageKeys,
     void_knowledge,
     VulnNudge,
     merge_knowledge,
@@ -65,31 +66,43 @@ RECON_PLAYBOOK = """
 RECON
 
 Objective
-Discover ports, services, endpoints, JS, APIs, forms, and parameters. Nothing active.
+Incrementally discover the attack surface. Plan only what is executable with knowledge
+you currently have. The planner will be called again after each execution batch.
 
-State
+State machine — follow in order, stop at first unmet condition:
 
-IF knowledge.open_ports is empty
-→ Discover ports (nmap_a).
+STEP 1 — Port discovery (always first)
+  Condition: knowledge.open_ports is empty
+  Action:    nmap_a basic scan
+  → Do NOT run http_a or ferox_a until ports are known.
 
-IF confirmed services or open ports exist but are not fingerprinted
-→ Fingerprint them (nmap_a for version/banner, http_a GET/HEAD for HTTP confirmation only).
+STEP 2 — Service fingerprinting
+  Condition: open_ports exist but services are not fingerprinted
+  Action:    nmap_a version/banner scan on discovered ports
 
-IF tech details are discovered but endpoints/parameters are unchecked
-→ Discover endpoints, JS files, and parameters (http_a, ferox_a passive/wordlist scans).
+STEP 3 — HTTP confirmation (only if HTTP ports found)
+  Condition: HTTP/HTTPS port exists (80, 443, 8080, 8443, or similar) but no web service confirmed
+  Action:    http_a GET/HEAD to confirm it serves HTTP and capture headers/title
 
-IF no ports are found open or all discovery is complete
-→ Finish phase.
+STEP 4 — Surface enumeration (only once HTTP URL is confirmed in knowledge graph)
+  Condition: web service URL is confirmed
+  Action:    ferox_a directory scan, http_a for JS files and param discovery
+  → Do NOT start this step until step 3 is complete and a URL is in the knowledge graph.
 
-IF a background is running then dispactch the approriate agent to check its status.
+STEP 5 — Background task check
+  Condition: A background scan is running
+  Action:    Check its status with the appropriate agent
+
+STEP 6 — Phase complete
+  Condition: All applicable steps are done
+  Action:    Return empty plan + phase_summary
 
 Forbidden — HARD STOPS, no exceptions
 - NO injection payloads of any kind: no XSS, SQLi, template injection, command injection,
-  path traversal, or parameter fuzzing. This means no <script>, alert(), ', ", --, ;, ../
-  in any request parameter — even "just to check reflection".
-- NO vulnerability testing or active verification of any kind.
-- http_a in this phase: GET and HEAD requests only, to confirm a port/endpoint serves content.
-  Do NOT fuzz, probe, or send payloads.
+  path traversal, or parameter fuzzing. No <script>, alert(), ', ", --, ;, ../
+- NO vulnerability testing of any kind.
+- http_a in this phase: GET and HEAD only. No fuzzing, no payloads.
+- ferox_a only after an HTTP URL is confirmed in the knowledge graph.
 """
 
 ATTACK_ANALYSIS_PLAYBOOK = """
@@ -121,11 +134,27 @@ Return:
 - extracted knowledge
 """
 
+NETWORK_PLAYBOOK = """
+NETWORK DISCOVERY
+1. Start with basic_scan.
+2. If no results or status complete: return empty plan + phase_summary.
+"""
+
+HTTP_PLAYBOOK = """
+HTTP ENUMERATION
+1. Confirm the web service by performing GET or HEAD request.
+2. If URL confirmed, perform directory enumeration or header validation.
+3. If finished: return empty plan + phase_summary.
+"""
+
 TACTICAL_PHASE_PLAYBOOKS: Dict[str, str] = {
     "recon":           RECON_PLAYBOOK,
     "attack_analysis": ATTACK_ANALYSIS_PLAYBOOK,
     "reporting":       REPORTING_PLAYBOOK,
+    "network":         NETWORK_PLAYBOOK,
+    "http":            HTTP_PLAYBOOK,
 }
+
 
 
 # ─── Nudge block injected into system prompt ──────────────────────────────────
@@ -252,16 +281,8 @@ def get_tactical_user_prompt(
     state: MasterState,
     phase_execution_history: List[Dict[str, str]],
 ) -> str:
-    try:
-        status_result = asyncio.run(run_mcp_tool("get_all_bg_task_status", {}))
-        if not isinstance(status_result, dict):
-            status_str = str(status_result)
-        elif status_result.get("total", 0) == 0:
-            status_str = "no background tasks dispatched yet"
-        else:
-            status_str = json.dumps(status_result, indent=2)
-    except Exception as e:
-        status_str = f"Error fetching — {e}"
+    # In v3, we avoid synchronous calls to run_mcp_tool in user prompt construction.
+    status_str = "no background tasks status (background tracking run asynchronously)"
 
     if not phase_execution_history:
         history_str = "None yet — first planning cycle for this phase"
@@ -456,7 +477,7 @@ Extract only NEW findings not already in the knowledge graph above.
         response = extractor_llm.invoke([
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt),
-        ])
+        ], config={"run_name": "Tactical Knowledge Extractor LLM"})
         # Extract native thinking
         from prototype.sub_agents.helper import extract_native_thinking
         native_thinking = extract_native_thinking(response)
@@ -476,14 +497,41 @@ Extract only NEW findings not already in the knowledge graph above.
         if "attack_analysis" not in accumulated["coverage"]:
             accumulated["coverage"]["attack_analysis"] = {}
 
+        # Map domain phases to recon coverage for M1
+        cov_phase = "recon" if phase in ["network", "http"] else phase
+
         # 1. Update coverage from successful task executions
         last_results = state.get("last_execution_results", [])
         for res in last_results:
             if res.get("status") == "SUCCESS" and res.get("coverage_keys"):
                 for key in res["coverage_keys"]:
-                    if phase in accumulated["coverage"] and key in accumulated["coverage"][phase]:
-                        accumulated["coverage"][phase][key]["completed"] = True
-                        logger.info(f"[extractor] Marked coverage completed: {phase}.{key}")
+                    if cov_phase in accumulated["coverage"] and key in accumulated["coverage"][cov_phase]:
+                        accumulated["coverage"][cov_phase][key]["completed"] = True
+                        logger.info(f"[extractor] Marked coverage completed: {cov_phase}.{key}")
+
+        # 1b. Prerequisite-gated promotion of recon coverage items.
+        #     Items start as required=False in void_knowledge() so the reviewer
+        #     cannot schedule them before their prerequisite is met.
+        #     Once the prerequisite is satisfied, flip required=True so the
+        #     reviewer (and planner) know this check now needs to be done.
+        recon_cov = accumulated.get("coverage", {}).get("recon", {})
+        ports_found = bool(accumulated.get("ports"))
+        http_services_found = bool(accumulated.get("services")) or any(
+            any(kw in str(v.get("service", "")).lower() for kw in ("http", "https", "web", "ssl"))
+            for v in accumulated.get("ports", {}).values()
+        )
+
+        if ports_found:
+            # Service fingerprinting is now executable
+            if CoverageKeys.SERVICE_FINGERPRINT in recon_cov:
+                recon_cov[CoverageKeys.SERVICE_FINGERPRINT]["required"] = True
+
+        if http_services_found:
+            # Directory/JS/API/param discovery are now executable
+            for key in [CoverageKeys.DIR_DISCOVERY, CoverageKeys.JS_DISCOVERY,
+                        CoverageKeys.API_DISCOVERY, CoverageKeys.PARAM_DISCOVERY]:
+                if key in recon_cov:
+                    recon_cov[key]["required"] = True
 
         # 2. Dynamic attack_analysis coverage generation based on discovered surface
         # Dynamic check for auth.login_testing
@@ -491,7 +539,6 @@ Extract only NEW findings not already in the knowledge graph above.
         if isinstance(endpoints_data, dict):
             for url in endpoints_data.keys():
                 if any(x in url.lower() for x in ["login", "signin", "auth", "session"]):
-                    from prototype.sub_agents.schemas import CoverageKeys
                     if CoverageKeys.AUTH_LOGIN not in accumulated["coverage"]["attack_analysis"]:
                         accumulated["coverage"]["attack_analysis"][CoverageKeys.AUTH_LOGIN] = {"required": True, "completed": False}
                         logger.info(f"[extractor] Dynamically registered check: {CoverageKeys.AUTH_LOGIN}")
@@ -503,7 +550,6 @@ Extract only NEW findings not already in the knowledge graph above.
                 if not isinstance(val, dict):
                     continue
                 param = val.get("param", "").lower()
-                from prototype.sub_agents.schemas import CoverageKeys
                 if any(x in param for x in ["id", "uid", "user", "account", "uuid"]):
                     if CoverageKeys.IDOR_NUMERIC not in accumulated["coverage"]["attack_analysis"]:
                         accumulated["coverage"]["attack_analysis"][CoverageKeys.IDOR_NUMERIC] = {"required": True, "completed": False}
@@ -601,7 +647,10 @@ def tactical_planner(state: MasterState) -> dict:
     ]
 
     try:
-        response = tactical_llm.invoke(messages)
+        response = tactical_llm.invoke(
+            messages,
+            config={"run_name": "Tactical Planner LLM"},
+        )
         # Extract native thinking
         from prototype.sub_agents.helper import extract_native_thinking
         native_thinking = extract_native_thinking(response)

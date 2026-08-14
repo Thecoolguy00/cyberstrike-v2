@@ -15,6 +15,7 @@ testing_RAG/
 LocalAIAgentWithRAG/
 playwright-automation/
 
+.kilo/
 
 #langgraph related
 .langgraph_api/
@@ -22,6 +23,7 @@ playwright-automation/
 #logs
 logs/
 test_run_logs/
+output/
 
 #data folders
 data/

@@ -60,7 +60,7 @@ async def init_graph():
         response=invoke_and_validate(llm=groq_llm, messages=messages)
         messages=messages+[response]
 
-        return await response_route(response)
+        return response_route(response)
 
     #graph
     flow=StateGraph(FeroxState)
@@ -81,7 +81,7 @@ async def init_graph():
     )
     flow.add_edge("tools","ferox_agent")
     flow.add_edge("mcp_exec","ferox_agent")
-    graph=flow.compile()
+    graph=flow.compile().with_config({"run_name": "Feroxbuster Discovery Graph"})
 
     return graph
 
