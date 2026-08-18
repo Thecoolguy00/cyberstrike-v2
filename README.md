@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/thecoolguy00-cyberstrike-v2-badge.png)](https://mseep.ai/app/thecoolguy00-cyberstrike-v2)
+
 # Cyberstrike V4: Automated WAPT Orchestrator
 
 Cyberstrike V4 is a modular, multi-agent Web Application Penetration Testing (WAPT) framework built on LangChain and LangGraph. V4 keeps the LLM for **strategic decisions only** and pushes all routine work (recon, service identification, scheduling, scoping, reporting) into **deterministic code**, so it runs fast and spends tokens only where they matter.
